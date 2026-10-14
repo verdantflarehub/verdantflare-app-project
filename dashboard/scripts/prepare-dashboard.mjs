@@ -27,7 +27,7 @@ export function metadata(appId, version, entries) {
     appApiPolicyRef: appId === 'project' ? 'project-dashboard-v1' : 'world-browser-v1', keepAlive: true,
   } }))
   const navigation = Buffer.from(JSON.stringify({ schemaVersion: 1, appId, appVersion: version, artifactDigest: 'sha256:' + hash(index), entry: {
-    entryId: 'main', title: appId === 'project' ? '项目' : '数字世界', iconRef: appId === 'project' ? 'folder' : 'globe', route: '/', accessRuleRef: appId + '-read',
+    entryId: 'main', title: appId === 'project' ? '项目管理' : '数字世界', iconRef: appId === 'project' ? 'folder' : 'globe', route: '/', accessRuleRef: appId + '-read',
   } }))
   return { index, declaration, navigation }
 }

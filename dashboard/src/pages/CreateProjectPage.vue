@@ -58,7 +58,7 @@ onBeforeUnmount(() => { alive = false; generation++; client.value?.dispose(); st
 
 <template>
   <main class="main">
-    <header class="heading"><div class="heading-left"><div class="eyebrow">PROJECTS</div><h1>新建项目</h1><p>填写项目基本信息，并保存第一份入口文档。</p></div><RouterLink class="btn" to="/projects">返回项目</RouterLink></header>
+    <header class="heading"><div class="heading-left"><div class="eyebrow">PROJECTS</div><h1>新建项目</h1><p>填写项目基本信息，并保存第一份入口文档。</p></div><RouterLink class="btn" to="/projects">返回项目管理</RouterLink></header>
     <p v-if="error" class="state error" role="alert">{{ error }}</p>
     <p v-if="busy" class="state" role="status">正在确认创建结果…</p>
     <section v-if="pending" class="panel">
