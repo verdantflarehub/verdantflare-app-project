@@ -2,8 +2,8 @@ import type { AppSDK, Context, Json, Unsubscribe } from './types.ts'
 import { commitID, type RecoveryStorage } from './asset-import.ts'
 
 export const createCategories = [
-  { key: 'character', label: '角色设计' }, { key: 'music', label: '音乐制作' }, { key: 'video', label: '短视频制作' },
-  { key: 'ai_short_drama', label: 'AI 短剧制作' }, { key: 'image', label: 'image（历史）' }, { key: 'music-mv', label: 'music-mv（历史）' },
+  { key: 'character', label: '角色设计' }, { key: 'music', label: '音乐制作' }, { key: 'video', label: '创意视频' },
+  { key: 'ai_short_drama', label: '短剧制作' }, { key: 'image', label: 'image（历史）' }, { key: 'music-mv', label: 'music-mv（历史）' },
 ] as const
 export const createBodyLimit = 1024 * 1024
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/

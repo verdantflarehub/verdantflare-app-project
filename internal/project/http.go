@@ -143,6 +143,12 @@ func (s *Service) HTTPHandler(serviceToken, authorityToken string) (http.Handler
 			if err == nil {
 				result, err = s.Commit(r.Context(), p, req)
 			}
+		case "/internal/v1/project/edit":
+			var req CommitRequest
+			req, err = decodeCommit(data)
+			if err == nil {
+				result, err = s.DashboardEdit(r.Context(), p, req)
+			}
 		case "/internal/v1/project/commit_status":
 			var req StatusRequest
 			if !decode(&req) {

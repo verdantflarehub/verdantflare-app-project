@@ -45,6 +45,8 @@ export class ProjectReader {
     if (typeof project.manifest.name !== 'string' || typeof project.manifest.category !== 'string' || new Set(project.manifest.files.map(f => f.file_id)).size !== project.manifest.files.length) throw new Error('项目文件清单不正确。')
     if (project.manifest.asset_refs != null && (!Array.isArray(project.manifest.asset_refs) || project.manifest.asset_refs.length > 10000 || project.manifest.asset_refs.some(ref => !isProjectID(ref.asset_id) || !isProjectID(ref.asset_version_id) || typeof ref.purpose !== 'string'))) throw new Error('项目资产引用不正确。')
     if (project.head_revision_id !== undefined && !isProjectID(project.head_revision_id)) throw new Error('项目最新修订信息不正确。')
+    if (project.parent_revision_id !== undefined && project.parent_revision_id !== '' && !isProjectID(project.parent_revision_id)) throw new Error('项目父修订信息不正确。')
+    if (project.can_write !== undefined && typeof project.can_write !== 'boolean') throw new Error('项目权限信息不正确。')
     this.project = project
     const documents = project.manifest.domain_documents.filter(d => d.document_type === 'project-content')
     if (documents.length > 1) throw new Error('当前修订包含重复的项目业务文档。')

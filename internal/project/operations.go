@@ -94,7 +94,10 @@ type Result struct {
 }
 type OpenResult struct {
 	Result
-	HeadRevisionID string `json:"head_revision_id"`
+	HeadRevisionID   string    `json:"head_revision_id"`
+	ParentRevisionID string    `json:"parent_revision_id"`
+	CreatedAt        time.Time `json:"created_at"`
+	CanWrite         bool      `json:"can_write"`
 }
 type CommitStatus struct {
 	State             string  `json:"state"`
@@ -116,6 +119,8 @@ type ListItem struct {
 	Category       string    `json:"category"`
 	Status         string    `json:"status"`
 	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+	CanWrite       bool      `json:"can_write"`
 }
 type ListResult struct {
 	Items      []ListItem `json:"items"`

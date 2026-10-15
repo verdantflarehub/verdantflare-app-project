@@ -97,3 +97,38 @@ func TestPackageAcceptsCurrentNavigationTitleAndRejectsUnknownTitle(t *testing.T
 		}
 	}
 }
+
+func TestPackageAcceptsFourBusinessNavigationAndRejectsTamperedChildren(t *testing.T) {
+	root := fixture(t)
+	path := filepath.Join(root, "navigation-declaration.json")
+	raw, _ := os.ReadFile(path)
+	var nav map[string]any
+	if err := json.Unmarshal(raw, &nav); err != nil {
+		t.Fatal(err)
+	}
+	nav["schemaVersion"] = 2
+	entry := nav["entry"].(map[string]any)
+	entry["title"], entry["route"] = "项目管理", ""
+	children := []navigationChild{
+		{"character", "角色设计", "/projects?category=character", "project-read", 0},
+		{"music", "音乐制作", "/projects?category=music", "project-read", 1},
+		{"video", "创意视频", "/projects?category=video", "project-read", 2},
+		{"ai_short_drama", "短剧制作", "/projects?category=ai_short_drama", "project-read", 3},
+	}
+	entry["children"] = children
+	raw, _ = json.Marshal(nav)
+	if err := os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(root, "0.1.0"); err != nil {
+		t.Fatal("generated navigation rejected", err)
+	}
+	children[2].Route = "/projects"
+	raw, _ = json.Marshal(nav)
+	if err := os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(root, "0.1.0"); err == nil {
+		t.Fatal("aggregate child route accepted")
+	}
+}

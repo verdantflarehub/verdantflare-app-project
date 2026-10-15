@@ -105,3 +105,28 @@ func TestDashboardCreateRejectsInvalidInputBeforeBusinessIO(t *testing.T) {
 		}
 	}
 }
+
+func TestDashboardEditRejectsBroaderWritesBeforeBusinessIO(t *testing.T) {
+	internal, err := (&project.Service{}).HTTPHandler(strings.Repeat("s", 32), strings.Repeat("a", 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	registerDashboardAPI(mux, internal)
+	for _, changes := range []string{
+		`{"set_metadata":{"category":"video"}}`,
+		`{"set_asset_refs":[]}`,
+		`{"remove_file_ids":[]}`,
+		`{"set_run_refs":[]}`,
+		`{"set_metadata":{"name":"first","name":"second"}}`,
+	} {
+		body := `{"project_id":"0199b501-0000-7000-8000-000000000001","expected_revision_id":"0199b501-0000-7000-8000-000000000004","commit_id":"0199b501-0000-7000-8000-000000000005","changes":` + changes + `}`
+		r := dashboardRequest(body)
+		r.URL.Path = "/api/v1/project/edit"
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, r)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("edit did not reject broader write: %d", w.Code)
+		}
+	}
+}

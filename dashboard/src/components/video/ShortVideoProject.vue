@@ -1,16 +1,22 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ProjectReader, type Cast } from '../../platform/project-reader'
 import ProjectMedia from '../ProjectMedia.vue'
 import ProjectPrompt from '../ProjectPrompt.vue'
+import ProjectEditDialog from '../ProjectEditDialog.vue'
+import { useRouter } from 'vue-router'
 
 const props = defineProps<{ reader: ProjectReader; tab: string }>()
-const route = useRoute()
+const route = useRoute(), router = useRouter()
+const editing = ref<'cast' | 'remove-cast'>()
+const canEdit = computed(() => project.value.can_write === true && project.value.revision_id === project.value.head_revision_id)
+function saved(revision: string) { editing.value = undefined; void router.replace({ path: route.path, query: { ...route.query, revision, item: undefined } }) }
 const project = computed(() => props.reader.project!)
 const content = computed(() => props.reader.content!)
 const video = computed(() => content.value.video!)
 const item = computed(() => typeof route.query.item === 'string' ? route.query.item : '')
+const castDetail = computed(() => video.value.cast.find(entry => entry.key === item.value))
 const board = computed(() => video.value.storyboards.find(entry => entry.key === item.value))
 const roles = [{ key: 'lead', label: '主角' }, { key: 'support', label: '配角' }] as const
 const duration = (seconds?: number | null) => seconds == null ? '时长未填写' : `${seconds} 秒`
@@ -27,8 +33,12 @@ function castLink(cast: Cast) {
 </script>
 
 <template>
-  <div class="short-video-page">
-    <template v-if="item">
+  <div class="short-video-page"><ProjectEditDialog v-if="editing" :reader="reader" :mode="editing" :item-key="item" @close="editing = undefined" @saved="saved" />
+    <template v-if="item && tab === 'cast'">
+      <p v-if="!castDetail" class="empty">当前项目修订中没有此片中角色。</p>
+      <section v-else class="panel"><h2>{{ castDetail.name }}</h2><p class="cast-role">本片角色：{{ castDetail.role === 'lead' ? '主角' : '配角' }}</p><ProjectMedia :reader="reader" :file-id="castDetail.portrait_file_id" kind="image" :label="castDetail.name" /><RouterLink v-if="castDetail.project_id" class="btn" :to="castLink(castDetail)">打开来源角色固定版本</RouterLink><p v-else class="muted">尚未关联来源角色项目。</p><button v-if="canEdit" class="btn" @click="editing = 'remove-cast'">移出本片</button></section>
+    </template>
+    <template v-else-if="item">
       <p v-if="!board" class="empty">当前项目修订中没有这项故事板。</p>
       <article v-else class="short-video-detail">
         <section class="panel">
@@ -51,14 +61,14 @@ function castLink(cast: Cast) {
       </article>
     </template>
     <template v-else-if="tab === 'cast'">
-      <header class="section-heading"><h2>角色创作</h2><span class="muted">{{ video.cast.length }} 位角色</span></header>
+      <header class="section-heading"><h2>角色创作</h2><button v-if="canEdit" class="btn" @click="editing = 'cast'">引用角色</button><span class="muted">{{ video.cast.length }} 位角色</span></header>
       <section v-for="role in roles" :key="role.key" class="panel">
         <h2>{{ role.label }}</h2>
         <div v-if="video.cast.some(cast => cast.role === role.key)" class="short-video-cast-grid">
           <article v-for="cast in video.cast.filter(cast => cast.role === role.key)" :key="cast.key" class="short-video-cast-card">
-            <component :is="cast.project_id ? 'RouterLink' : 'div'" v-bind="cast.project_id ? { to: castLink(cast) } : {}" class="short-video-cast-link">
+            <RouterLink :to="{ path: route.path, query: { ...route.query, tab: 'cast', item: cast.key } }" class="short-video-cast-link">
               <ProjectMedia :reader="reader" :file-id="cast.portrait_file_id" kind="image" :label="cast.name" thumbnail /><strong>{{ cast.name }}</strong>
-            </component>
+            </RouterLink>
             <p class="cast-role">本片角色：{{ role.label }}</p>
           </article>
         </div>
