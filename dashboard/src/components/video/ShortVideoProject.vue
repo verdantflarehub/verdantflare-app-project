@@ -26,8 +26,8 @@ function boardLink(key: string) {
 }
 function castLink(cast: Cast) {
   return { path: route.path, query: {
-    ...route.query, project: cast.project_id!, revision: cast.revision_id!, tab: 'setting', item: undefined,
-    from: project.value.project_id, fromRevision: project.value.revision_id, fromName: project.value.manifest.name,
+    ...route.query, category: 'character', project: cast.project_id!, revision: cast.revision_id!, tab: 'setting', item: undefined,
+    from: project.value.project_id, fromRevision: project.value.revision_id, fromName: project.value.manifest.name, fromItem: cast.key,
   } }
 }
 </script>
