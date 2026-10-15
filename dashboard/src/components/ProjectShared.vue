@@ -7,7 +7,7 @@ import { readProjectHistory } from '../platform/project-revisions'
 import { useHost } from '../platform/host'
 import { nativeRunTarget, worldTarget } from '../platform/route-links'
 import ProjectMedia from './ProjectMedia.vue'
-import DramaPublication from './drama/DramaPublication.vue'
+import ProjectCandidateDetail from './ProjectCandidateDetail.vue'
 import DramaDocument from './drama/DramaDocument.vue'
 
 const props = defineProps<{ reader: ProjectReader; tab: string }>()
@@ -27,6 +27,9 @@ const nativeRun = computed(() => run.value ? nativeRunTarget(run.value.service_i
 const openingRun = ref(false)
 const refs = computed(() => project.value.manifest.asset_refs || [])
 const reference = computed(() => refs.value.find(r => `${r.asset_id}:${r.asset_version_id}:${r.purpose}` === q('reference')))
+const referenceMaterials = computed(() => reference.value ? (props.reader.content?.ai_short_drama?.globals || []).filter(g => g.asset_id === reference.value!.asset_id && g.asset_version_id === reference.value!.asset_version_id) : [])
+const referenceUsages = computed(() => (props.reader.content?.ai_short_drama?.usages || []).filter(u => referenceMaterials.value.some(g => g.key === u.global_key)))
+const referenceContinuity = computed(() => reference.value ? (props.reader.content?.ai_short_drama?.continuity || []).filter(c => c.asset_id === reference.value!.asset_id && c.asset_version_id === reference.value!.asset_version_id) : [])
 const candidates = computed(() => props.reader.content?.ai_short_drama?.world_candidates || [])
 const candidate = computed(() => candidates.value.find(c => c.key === q('candidate')))
 let generation = 0, alive = true, hidden = false
@@ -88,8 +91,8 @@ onBeforeUnmount(() => { alive = false; generation++; fileGeneration++; stop() })
       <section v-if="q('run') && run" class="panel"><h2>原生运行</h2><dl><dt>服务</dt><dd>{{ run.service_id }}</dd><dt>运行</dt><dd>{{ run.run_id }}</dd><dt>状态</dt><dd>需由原生服务查询，项目引用不代表运行成功。</dd></dl><button v-if="nativeRun" class="btn" :disabled="openingRun" @click="openRun">{{ openingRun ? '正在打开原任务…' : '打开原任务查询与恢复' }}</button><p v-else class="muted">此服务尚未提供可识别的原生任务入口，请凭上述原任务 ID 查询。</p></section><p v-else-if="q('run')" class="empty">运行不在当前项目修订中。</p><template v-else><h2>运行</h2><div class="rows"><RouterLink v-for="r in runs" :key="`${r.service_id}:${r.run_id}`" :to="link({ run: `${r.service_id}:${r.run_id}` })"><strong>{{ r.service_id }}</strong><small>{{ r.run_id }}</small></RouterLink></div><p v-if="!runs.length" class="empty">暂无关联运行。</p></template>
     </template>
     <template v-else-if="tab === 'references'">
-      <section v-if="q('reference') && reference" class="panel"><h2>固定资产引用</h2><dl><dt>用途</dt><dd>{{ reference.purpose }}</dd><dt>资产</dt><dd>{{ reference.asset_id }}</dd><dt>版本</dt><dd>{{ reference.asset_version_id }}</dd></dl><button class="btn" @click="openWorld">打开来源详情</button></section><p v-else-if="q('reference')" class="empty">资产引用不在当前修订中。</p>
-      <template v-else-if="q('candidate')"><DramaPublication v-if="candidate" :reader="reader" :candidates="[candidate]" /><p v-else class="empty">当前修订没有此入库候选。</p></template>
+      <template v-if="q('reference') && reference"><section class="panel"><h2>固定资产引用</h2><dl><dt>来源类型</dt><dd>数字世界固定资产版本</dd><dt>用途</dt><dd>{{ reference.purpose }}</dd><dt>资产</dt><dd>{{ reference.asset_id }}</dd><dt>版本</dt><dd>{{ reference.asset_version_id }}</dd></dl><button class="btn" @click="openWorld">打开来源详情</button><h3>许可与适配</h3><p class="muted">本项目引用未保存源包预览、许可范围与期限。请在来源固定版本详情核对实际读取权限、源文件及使用限制。</p></section><section class="panel"><h2>本项目使用位置</h2><div class="rows"><RouterLink v-for="g in referenceMaterials" :key="g.key" :to="link({ reference: undefined, tab: g.kind, material: g.key })"><strong>{{ g.name }}</strong><small>{{ g.description || '查看本项目关联资料' }}</small></RouterLink><RouterLink v-for="c in referenceContinuity" :key="c.key" :to="link({ reference: undefined, tab: 'continuity', continuity: c.key })"><strong>{{ c.name }}</strong><small>{{ c.description || '查看连续性记录' }}</small></RouterLink></div><ul v-if="referenceUsages.length"><li v-for="u in referenceUsages" :key="u.key">{{ u.description || u.key }} · 集 {{ u.target.episode_key }}<template v-if="u.target.scene_key"> / 场 {{ u.target.scene_key }}</template><template v-if="u.target.shot_key"> / 镜 {{ u.target.shot_key }}</template></li></ul><p v-if="!referenceMaterials.length && !referenceContinuity.length" class="muted">当前固定修订未登记业务对象与此资产版本的使用位置映射。</p></section></template><p v-else-if="q('reference')" class="empty">资产引用不在当前修订中。</p>
+      <template v-else-if="q('candidate')"><ProjectCandidateDetail v-if="candidate" :reader="reader" :candidate="candidate" /><p v-else class="empty">当前修订没有此入库候选。</p></template>
       <template v-else><h2>资产引用</h2><div class="rows"><RouterLink v-for="r in refs" :key="`${r.asset_id}:${r.asset_version_id}:${r.purpose}`" :to="link({ reference: `${r.asset_id}:${r.asset_version_id}:${r.purpose}` })"><strong>{{ r.purpose }}</strong><small>{{ r.asset_id }} · {{ r.asset_version_id }}</small></RouterLink></div><p v-if="!refs.length" class="empty">暂无固定资产引用。</p><h2>入库候选</h2><div class="rows"><RouterLink v-for="c in candidates" :key="c.key" :to="link({ candidate: c.key })"><strong>{{ c.name }}</strong><small>{{ c.description || '查看入库依据与状态' }}</small></RouterLink></div><p v-if="!candidates.length" class="empty">暂无入库候选。</p></template>
     </template>
   </div>

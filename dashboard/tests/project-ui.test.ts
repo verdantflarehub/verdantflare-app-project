@@ -157,3 +157,30 @@ test('shot and deliverable versions have single-version details without version 
   assert.match(result, /成果版本/); assert.match(result, /成果第二版/)
   assert.doesNotMatch(result, /成果第一版|<select|完整版本与修改历史/)
 })
+
+test('asset details show only usage mappings for the exact fixed asset version', async () => {
+  const reader = dramaReader(), drama = reader.content.ai_short_drama!, material = drama.globals[0]
+  material.asset_id = id(50); material.asset_version_id = id(51)
+  reader.project.manifest.asset_refs = [{ asset_id: id(50), asset_version_id: id(51), purpose: '角色身份' }] as never
+  drama.usages = [{ key: 'use', global_key: material.key, target: { episode_key: 'ep', scene_key: 'scene', shot_key: 'shot' }, description: '固定来源使用', state_key: null, version_key: null, segment: null }]
+  const path = `/projects?reference=${id(50)}:${id(51)}:${encodeURIComponent('角色身份')}`
+  const render = renderer(), html = await render.render('components/ProjectShared.vue', { reader, tab: 'references' }, path)
+  for (const text of ['本项目使用位置', material.name, '固定来源使用', '许可与适配']) assert(html.includes(text))
+  material.asset_version_id = id(52)
+  const other = await render.render('components/ProjectShared.vue', { reader, tab: 'references' }, path)
+  assert.match(other, /未登记业务对象与此资产版本/); assert.doesNotMatch(other, /固定来源使用/)
+})
+
+test('candidate details preserve review, fixed source and missing scope without substituting another revision', async () => {
+  const reader = dramaReader(), owner = reader.content.ai_short_drama!.globals[0]
+  owner.versions = [{ key: 'candidate_v1', label: '候选制作版本', basis_revision_id: id(2), parent_version_key: null, change_note: '制作说明', file_refs: [{ file_id: id(10), content_ref: reader.project.manifest.files[0].content_ref, purpose: 'project' }], generation_record_file_ids: [], review: { state: 'unreviewed', record_file_id: null } }]
+  const candidate = { key: 'audit', name: '待审候选', source: { kind: 'global', key: owner.key }, description: '候选说明', publication_record_file_id: null, review: { state: 'unreviewed', record_file_id: null }, registration_request: null, registration_status: null }
+  const original = JSON.stringify(reader)
+  const render = renderer(), html = await render.render('components/ProjectCandidateDetail.vue', { reader, candidate }, '/projects?tab=references&candidate=audit')
+  for (const text of ['待审候选', '候选说明', '尚未入库', '未审核', '候选制作版本', '尚未固定本次入库文件范围', '暂不存储']) assert(html.includes(text))
+  assert.equal(JSON.stringify(reader), original)
+  const archived = { ...candidate, registration_request: { source_project_id: id(1), source_revision_id: id(99), file_ids: [id(10)] } }
+  const fixed = await render.render('components/ProjectCandidateDetail.vue', { reader, candidate: archived }, '/projects?tab=references&candidate=audit')
+  assert(fixed.includes(id(99))); assert.match(fixed, /候选使用另一固定修订/)
+  assert.doesNotMatch(fixed, /候选制作版本|files\/10.md/)
+})
