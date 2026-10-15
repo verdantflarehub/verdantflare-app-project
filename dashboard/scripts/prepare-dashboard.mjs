@@ -29,10 +29,10 @@ export function metadata(appId, version, entries) {
   const navigation = Buffer.from(JSON.stringify({ schemaVersion: appId === 'project' ? 2 : 1, appId, appVersion: version, artifactDigest: 'sha256:' + hash(index), entry: {
     entryId: 'main', title: appId === 'project' ? '项目管理' : '数字世界', iconRef: appId === 'project' ? 'folder' : 'globe', route: appId === 'project' ? '' : '/', accessRuleRef: appId + '-read',
     ...(appId === 'project' ? { children: [
-      { entryId: 'character', title: '角色设计', route: '/projects?category=character', accessRuleRef: 'project-read', order: 0 },
-      { entryId: 'music', title: '音乐制作', route: '/projects?category=music', accessRuleRef: 'project-read', order: 1 },
-      { entryId: 'video', title: '创意视频', route: '/projects?category=video', accessRuleRef: 'project-read', order: 2 },
-      { entryId: 'ai_short_drama', title: '短剧制作', route: '/projects?category=ai_short_drama', accessRuleRef: 'project-read', order: 3 },
+      { entryId: 'character', title: '角色设计', route: '/character', accessRuleRef: 'project-read', order: 0 },
+      { entryId: 'music', title: '音乐制作', route: '/music', accessRuleRef: 'project-read', order: 1 },
+      { entryId: 'video', title: '创意视频', route: '/video', accessRuleRef: 'project-read', order: 2 },
+      { entryId: 'ai_short_drama', title: '短剧制作', route: '/ai_short_drama', accessRuleRef: 'project-read', order: 3 },
     ] } : {}),
   } }))
   return { index, declaration, navigation }

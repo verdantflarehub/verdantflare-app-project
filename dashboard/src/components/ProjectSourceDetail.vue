@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { ProjectReader, readerError } from '../platform/project-reader'
 import { projectSourceRoute, type ProjectSource } from '../platform/project-source'
 import { useHost } from '../platform/host'
+import { musicSourceEntry } from '../platform/music-production'
 import ProjectMedia from './ProjectMedia.vue'
 
 const props = defineProps<{ reader: ProjectReader; source: ProjectSource }>()
@@ -19,7 +20,8 @@ async function load() {
   try {
     await next.load()
     if (next.project?.manifest.category !== source.category) throw Error('来源项目类型与固定引用不一致。')
-    if (source.category === 'music' && !next.content?.music?.songs.some(s => s.key === source.sourceItem)) throw Error('来源固定修订没有这首歌曲。')
+    if (source.musicInput) musicSourceEntry(next.content?.music, source.musicInput)
+    else if (source.category === 'music' && !next.content?.music?.songs.some(s => s.key === source.sourceItem)) throw Error('来源固定修订没有这首歌曲。')
   } catch (cause) {
     next.dispose()
     if (alive && token === generation) { sourceReader.value = undefined; error.value = readerError(cause) }
@@ -35,14 +37,14 @@ onBeforeUnmount(() => { alive = false; clear(); stop() })
 </script>
 
 <template>
-  <section class="panel"><h2>{{ source.name }}</h2><dl><dt>来源类型</dt><dd>{{ source.category === 'music' ? '音乐' : '角色' }}项目固定修订</dd><dt>用途</dt><dd>{{ source.purpose }}</dd><dt>来源项目</dt><dd>{{ source.project_id }}</dd><dt>固定修订</dt><dd>{{ source.revision_id }}</dd><template v-if="source.sourceItem"><dt>固定歌曲</dt><dd>{{ source.sourceItem }}</dd></template></dl>
+  <section class="panel"><h2>{{ source.name }}</h2><dl><dt>来源类型</dt><dd>{{ source.category === 'music' ? '音乐' : '角色' }}项目固定修订</dd><dt>用途</dt><dd>{{ source.purpose }}</dd><dt>来源项目</dt><dd>{{ source.project_id }}</dd><dt>固定修订</dt><dd>{{ source.revision_id }}</dd><template v-if="source.sourceItem"><dt>固定业务对象</dt><dd>{{ source.sourceItem }}</dd></template></dl>
     <ProjectMedia v-if="source.preview_file_id" :reader="reader" :file-id="source.preview_file_id" kind="image" :label="source.name" />
     <p v-if="busy" class="muted" role="status">正在核对来源固定修订…</p>
     <div v-else-if="error" role="alert"><p>{{ error }}</p><button class="btn" @click="load">重试来源读取</button></div>
     <template v-else-if="sourceReader?.project"><p>当前权限：已读取此固定修订。</p><p>{{ sourceReader.project.manifest.name }}</p><p class="muted">{{ sourceReader.content?.overview || '来源未填写概述。' }}</p><RouterLink class="btn" :to="target">打开来源详情</RouterLink></template>
     <h3>许可与适配</h3><p class="muted">项目读取权限不代表素材已获使用许可。此关系未登记使用范围与期限，请核对来源说明。</p>
   </section>
-  <section class="panel"><h2>本项目使用位置</h2><RouterLink class="btn" :to="{ path: route.path, query: { ...route.query, reference: undefined, tab: source.category === 'music' ? 'music' : 'cast', item: source.category === 'music' ? undefined : source.item, material: source.category === 'music' ? source.item : undefined } }">{{ source.purpose }} · {{ source.name }}</RouterLink></section>
+  <section class="panel"><h2>本项目使用位置</h2><RouterLink class="btn" :to="{ path: route.path, query: { ...route.query, reference: undefined, tab: source.ownerGroup || (source.category === 'music' ? 'music' : 'cast'), version: source.ownerVersion, item: source.ownerGroup || source.category !== 'music' ? source.item : undefined, material: source.ownerGroup ? undefined : source.category === 'music' ? source.item : undefined } }">{{ source.purpose }} · {{ source.name }}</RouterLink></section>
 </template>
 
 <style scoped>

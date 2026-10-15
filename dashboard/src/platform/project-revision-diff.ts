@@ -24,6 +24,12 @@ export interface BusinessValue { key: string; label: string; value: unknown }
 function businessValues(content: ProjectContent | null): BusinessValue[] {
   if (!content) return []
   const out: BusinessValue[] = []
+  if (content.music) for (const [group, entries] of [['voice', content.music.voice.models], ['songs', content.music.songs], ['mvs', content.music.mvs]] as const) {
+    for (const item of entries) if (item.production) {
+      if (item.production.selected_version_key) out.push({ key: `music/${group}/${item.key}/selected`, label: '音乐选用 · ' + item.title, value: item.production.selected_version_key })
+      for (const version of item.production.versions) out.push({ key: `music/${group}/${item.key}/version/${version.key}`, label: `${item.title} · ${version.label}`, value: version })
+    }
+  }
   for (const c of content.video?.cast || []) if (c.project_id) out.push({ key: 'cast/' + c.key, label: '片中角色 · ' + c.name, value: { project_id: c.project_id, revision_id: c.revision_id, role: c.role } })
   const drama = content.ai_short_drama
   if (drama) {

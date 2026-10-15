@@ -11,6 +11,7 @@ test('legacy bookmarks preserve the fixed revision, filters and app route', () =
   assert.deepEqual(legacyStudioTarget('/projects?mode=world&view=files&asset=' + a), { appId: 'world', path: '/?asset=' + a })
   assert.equal(canonicalRoute('project', '/use-asset?asset=' + a + '&version=' + b), '/use-asset?asset=' + a + '&version=' + b)
   assert.equal(canonicalRoute('project', '/?category=music'), '/projects?category=music')
+  for (const category of ['character', 'music', 'video', 'ai_short_drama']) assert.equal(canonicalRoute('project', '/' + category), '/projects?category=' + category)
 })
 test('cross application targets contain only app identity and fixed business version', () => {
   assert.deepEqual(projectTarget(a, b), { appId: 'project', path: `/projects?project=${a}&revision=${b}` })
@@ -22,7 +23,7 @@ test('cross application targets contain only app identity and fixed business ver
   for (const path of ['//outside.example/projects', '/projects?project=x&project=y', '/projects#other', '/projects/../world']) assert.throws(() => canonicalRoute('project', path))
 })
 test('native runs keep original IDs and only expose verified media task routes', () => {
-  assert.deepEqual(nativeRunTarget('video', 'video_task_original'), { appId: 'video-mcp-server', path: '/dashboard/tasks/video_task_original' })
-  assert.deepEqual(nativeRunTarget('image', 'imgtask-original'), { appId: 'image-mcp-server', path: '/dashboard/tasks/imgtask-original' })
+  assert.deepEqual(nativeRunTarget('video', 'video_task_original'), { appId: 'video-mcp', path: '/dashboard/tasks/video_task_original' })
+  assert.deepEqual(nativeRunTarget('image', 'imgtask-original'), { appId: 'image-mcp', path: '/dashboard/tasks/imgtask-original' })
   for (const [service, id] of [['music', 'unknown'], ['video', '../new'], ['image', 'id?submit=true'], ['video', '']]) assert.equal(nativeRunTarget(service, id), null)
 })
