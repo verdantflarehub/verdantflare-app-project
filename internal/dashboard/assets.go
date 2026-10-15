@@ -140,7 +140,13 @@ func validProjectNavigation(schema int, route string, children *[]navigationChil
 		{"ai_short_drama", "短剧制作", "/projects?category=ai_short_drama", "project-read", 3},
 	}
 	for i, child := range *children {
-		if child != expected[i] {
+		// Current declarations use category paths. Existing immutable releases
+		// retain their original query routes and must remain loadable.
+		want := expected[i]
+		if child.Route == "/"+want.EntryID {
+			child.Route = want.Route
+		}
+		if child != want {
 			return false
 		}
 	}

@@ -123,6 +123,25 @@ func TestPackageAcceptsFourBusinessNavigationAndRejectsTamperedChildren(t *testi
 	if _, err := Load(root, "0.1.0"); err != nil {
 		t.Fatal("generated navigation rejected", err)
 	}
+	for i := range children {
+		children[i].Route = "/" + children[i].EntryID
+	}
+	raw, _ = json.Marshal(nav)
+	if err := os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(root, "0.1.0"); err != nil {
+		t.Fatal("category path navigation rejected", err)
+	}
+	children[1].Route = "/character"
+	raw, _ = json.Marshal(nav)
+	if err := os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(root, "0.1.0"); err == nil {
+		t.Fatal("wrong category path accepted")
+	}
+	children[1].Route = "/music"
 	children[2].Route = "/projects"
 	raw, _ = json.Marshal(nav)
 	if err := os.WriteFile(path, raw, 0600); err != nil {
@@ -130,5 +149,20 @@ func TestPackageAcceptsFourBusinessNavigationAndRejectsTamperedChildren(t *testi
 	}
 	if _, err := Load(root, "0.1.0"); err == nil {
 		t.Fatal("aggregate child route accepted")
+	}
+}
+
+// Exercise the actual exported release bytes when doing local delivery checks.
+func TestPackageLoadsExportedDashboard(t *testing.T) {
+	root := os.Getenv("PROJECT_DASHBOARD_TEST_DIR")
+	if root == "" {
+		t.Skip("no exported delivery supplied")
+	}
+	version := os.Getenv("PROJECT_DASHBOARD_TEST_VERSION")
+	if version == "" {
+		t.Fatal("exported delivery version required")
+	}
+	if _, err := Load(root, version); err != nil {
+		t.Fatal(err)
 	}
 }
