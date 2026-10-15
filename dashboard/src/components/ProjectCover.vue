@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, ref, shallowRef } from "vue";
 import { ProjectReader, type ProjectItem } from "../platform/project-reader";
 import ProjectMedia from "./ProjectMedia.vue";
 import { useHost } from '../platform/host';
+import { coverFile, defaultCoverPosition, type CoverPosition } from '../platform/cover-position';
 const props = defineProps<{ project: ProjectItem }>();
 const root = ref<HTMLElement | null>(null),
   reader = shallowRef<ProjectReader | null>(null),
@@ -10,13 +11,17 @@ const root = ref<HTMLElement | null>(null),
 let observer: IntersectionObserver | undefined,
   disposed = false;
 let stopLifecycle = () => {};
+const position = ref<CoverPosition>(defaultCoverPosition());
 function load() {
   reader.value?.dispose();
   fileID.value = null;
   const next = new ProjectReader(props.project.project_id, props.project.head_revision_id);
   reader.value = next;
   void next.load().then(() => {
-    if (!disposed && reader.value === next) fileID.value = next.content?.cover_file_id || next.content?.character?.portrait_file_id || null;
+    if (!disposed && reader.value === next) {
+      fileID.value = coverFile(next.content);
+      position.value = next.content?.cover_position || defaultCoverPosition();
+    }
   }).catch(() => {});
 }
 onMounted(() => {
@@ -51,6 +56,7 @@ onBeforeUnmount(() => {
       kind="image"
       :label="project.name"
       thumbnail
+      :object-position="position"
     />
     <span v-else aria-hidden="true">{{
       project.category === "music"

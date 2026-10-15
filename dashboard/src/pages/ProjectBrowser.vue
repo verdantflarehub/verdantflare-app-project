@@ -14,6 +14,7 @@ import ProjectShared from '../components/ProjectShared.vue'
 import CreateProjectPage from './CreateProjectPage.vue'
 import ProjectEditDialog from '../components/ProjectEditDialog.vue'
 import { hasProjectEditRecovery } from '../platform/project-edit'
+import { sourceReturnCategory } from '../platform/project-source'
 
 const route = useRoute(), router = useRouter()
 const { appSDK, dashboardHost } = useHost()
@@ -69,7 +70,7 @@ const entries = computed<Detail[]>(() => {
 const visibleEntries = computed(() => entries.value.filter(e => (e.title + ' ' + (e.overview || '')).toLocaleLowerCase().includes(query('find').trim().toLocaleLowerCase())))
 const detail = computed(() => entries.value.find(d => d.key === query('item')))
 const objectTitle = computed(() => query('file') ? project.value?.manifest.files.find(f => f.file_id === query('file'))?.path || '文件详情'
-  : query('fixed') ? '固定修订详情' : query('run') ? '原生运行详情' : query('reference') ? '固定资产引用' : query('candidate') ? '入库候选'
+  : query('fixed') ? '固定修订详情' : query('run') ? '原生运行详情' : query('reference') ? '固定来源引用' : query('candidate') ? '入库候选'
   : query('lighting') ? '环境与灯光' : query('package') ? '交付包'
   : query('material') ? dramaMaterial.value?.name || '资料详情'
   : query('shot') ? dramaShot.value?.versions.find(v => v.key === query('version'))?.label || dramaShot.value?.title || '镜头详情'
@@ -91,10 +92,11 @@ const shown = computed(() => filtered.value.slice(0, visibleCount.value))
 const displayTime = (time?: string) => time && Number.isFinite(Date.parse(time)) ? new Date(time).toLocaleString('zh-CN') : '更新时间未知'
 const resultKind = computed(() => activeTab.value?.key === 'extensions' ? 'image' : ['songs', 'voice'].includes(activeTab.value?.key || '') ? 'audio' : 'video')
 const fromProject = computed(() => isProjectID(query('from')) && isProjectID(query('fromRevision')) ? { id: query('from'), revision: query('fromRevision'), name: query('fromName') || '创意视频' } : null)
+const fromSourceReference = computed(() => /^project:(cast|music):[^\u0000-\u001f\u007f]+$/.test(query('fromReference')) ? query('fromReference') : undefined)
 const value = (text?: string | null) => text?.trim() ? text : '未填写'
 const duration = (seconds?: number | null) => seconds == null ? '时长未填写' : `${seconds} 秒`
 function link(change: Record<string, string | undefined>) { return { path: '/projects', query: { ...route.query, publish: undefined, publication: undefined, ...change } } }
-const listLink = computed(() => link({ category: project.value?.manifest.category || filter.value, file: undefined, fixed: undefined, run: undefined, reference: undefined, candidate: undefined, lighting: undefined, package: undefined, project: undefined, revision: undefined, tab: undefined, item: undefined, episode: undefined, scene: undefined, shot: undefined, from: undefined, fromRevision: undefined, fromName: undefined, fromItem: undefined, material: undefined, state: undefined, version: undefined, compare: undefined, deliverable: undefined, kind: undefined, find: undefined, fileType: undefined, status: undefined, view: undefined, purpose: undefined, segment: undefined, continuity: undefined, returnMaterial: undefined }))
+const listLink = computed(() => link({ category: project.value?.manifest.category || filter.value, file: undefined, fixed: undefined, run: undefined, reference: undefined, candidate: undefined, lighting: undefined, package: undefined, project: undefined, revision: undefined, tab: undefined, item: undefined, episode: undefined, scene: undefined, shot: undefined, from: undefined, fromRevision: undefined, fromName: undefined, fromItem: undefined, fromReference: undefined, fromCategory: undefined, material: undefined, state: undefined, version: undefined, compare: undefined, deliverable: undefined, kind: undefined, find: undefined, fileType: undefined, status: undefined, view: undefined, purpose: undefined, segment: undefined, continuity: undefined, returnMaterial: undefined }))
 function openProject(item: ProjectItem) { return link({ file: undefined, fixed: undefined, run: undefined, reference: undefined, candidate: undefined, lighting: undefined, package: undefined, project: item.project_id, revision: item.head_revision_id, tab: undefined, item: undefined, episode: undefined, scene: undefined, shot: undefined, material: undefined, state: undefined, version: undefined, compare: undefined, deliverable: undefined, kind: undefined, find: undefined, fileType: undefined, status: undefined, view: undefined, purpose: undefined, segment: undefined, continuity: undefined, returnMaterial: undefined }) }
 const positions = new Map<string, number>()
 const listViews = new Map<string, { q?: string; sort?: string; shown?: string }>()
@@ -194,7 +196,7 @@ onBeforeUnmount(() => { closeEdit(); alive = false; request++; listRequest++; re
       <nav class="breadcrumbs" aria-label="面包屑">
         <RouterLink :to="listLink">项目管理</RouterLink><span>/</span>
         <template v-if="projectID">
-        <template v-if="fromProject"><RouterLink :to="link({ category: 'video', project: fromProject.id, revision: fromProject.revision, tab: 'cast', item: query('fromItem') || undefined, from: undefined, fromRevision: undefined, fromName: undefined, fromItem: undefined })">{{ fromProject.name }}</RouterLink><span>/</span></template>
+        <template v-if="fromProject"><RouterLink :to="link({ category: sourceReturnCategory(query('fromCategory')), project: fromProject.id, revision: fromProject.revision, tab: fromSourceReference ? 'references' : 'cast', item: fromSourceReference ? undefined : query('fromItem') || undefined, reference: fromSourceReference, from: undefined, fromRevision: undefined, fromName: undefined, fromItem: undefined, fromReference: undefined, fromCategory: undefined })">{{ fromProject.name }}</RouterLink><span>/</span></template>
         <RouterLink :to="{ ...listLink, query: { ...listLink.query, category: project?.manifest.category || filter || undefined } }">{{ categoryName(project?.manifest.category || filter) }}</RouterLink><span>/</span>
         <template v-if="objectDetail"><RouterLink :to="link({ item: undefined, material: undefined, shot: undefined, scene: undefined, continuity: undefined, deliverable: undefined, file: undefined, fixed: undefined, run: undefined, reference: undefined, candidate: undefined, lighting: undefined, package: undefined, state: undefined, version: undefined, compare: undefined, tab: undefined, kind: undefined })">{{ project?.manifest.name || '项目' }}</RouterLink><span>/</span><RouterLink :to="link({ item: undefined, material: undefined, shot: undefined, scene: undefined, continuity: undefined, deliverable: undefined, file: undefined, fixed: undefined, run: undefined, reference: undefined, candidate: undefined, lighting: undefined, package: undefined, state: undefined, version: undefined, compare: undefined })">{{ activeTab?.label }}</RouterLink><span>/</span><span aria-current="page">{{ objectTitle || '详情' }}</span></template>
         <span v-else aria-current="page">{{ project?.manifest.name || '项目' }}</span>

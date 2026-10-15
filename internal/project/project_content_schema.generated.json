@@ -2,8 +2,8 @@
   "station://contracts/drafts/project-content": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "station://contracts/drafts/project-content",
-    "title": "ProjectContent · 项目内容与短剧制作增量",
-    "description": "项目内容草案；短剧多状态、多版本与固定引用增量按已确认 MD/HTML 接入本地实现，生产部署与服务验收另行记录。普通文件属于当前 Manifest；历史输入按 basis_revision_id 解析。结构校验不代替服务端引用、不可变性、权限、人工审核与真实发布结果校验。旧项目可不含制作版本。",
+    "title": "ProjectContent · 项目内容与类型制作增量",
+    "description": "项目内容契约；短剧和创意视频类型按各自批准范围接入。普通文件属于当前 Manifest；历史输入按 basis_revision_id 解析。结构校验不代替服务端引用、不可变性、权限、人工审核与真实发布结果校验。旧项目可不含制作版本。",
     "type": "object",
     "required": [
       "schema_version",
@@ -22,7 +22,8 @@
           "character",
           "music",
           "video",
-          "ai_short_drama"
+          "ai_short_drama",
+          "creative_video"
         ]
       },
       "overview": {
@@ -30,6 +31,36 @@
       },
       "cover_file_id": {
         "$ref": "#/$defs/reference"
+      },
+      "cover_position": {
+        "anyOf": [
+          {
+            "type": "null"
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "x",
+              "y"
+            ],
+            "properties": {
+              "x": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "y": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              }
+            }
+          }
+        ]
+      },
+      "cover_placeholder": {
+        "type": "boolean"
       },
       "character": {
         "$ref": "#/$defs/character"
@@ -42,8 +73,32 @@
       },
       "ai_short_drama": {
         "$ref": "#/$defs/aiShortDrama"
+      },
+      "creative_video": {
+        "$ref": "station://contracts/drafts/creative-video-project-content#/$defs/creativeVideo"
       }
     },
+    "allOf": [
+      {
+        "if": {
+          "required": [
+            "cover_placeholder"
+          ],
+          "properties": {
+            "cover_placeholder": {
+              "const": true
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "cover_file_id": {
+              "type": "null"
+            }
+          }
+        }
+      }
+    ],
     "oneOf": [
       {
         "required": [
@@ -63,6 +118,9 @@
             "type": "null"
           },
           "ai_short_drama": {
+            "type": "null"
+          },
+          "creative_video": {
             "type": "null"
           }
         }
@@ -86,6 +144,9 @@
           },
           "ai_short_drama": {
             "type": "null"
+          },
+          "creative_video": {
+            "type": "null"
           }
         }
       },
@@ -108,6 +169,9 @@
           },
           "ai_short_drama": {
             "type": "null"
+          },
+          "creative_video": {
+            "type": "null"
           }
         }
       },
@@ -129,6 +193,34 @@
             "type": "null"
           },
           "video": {
+            "type": "null"
+          },
+          "creative_video": {
+            "type": "null"
+          }
+        }
+      },
+      {
+        "required": [
+          "creative_video"
+        ],
+        "properties": {
+          "category": {
+            "const": "creative_video"
+          },
+          "creative_video": {
+            "type": "object"
+          },
+          "character": {
+            "type": "null"
+          },
+          "music": {
+            "type": "null"
+          },
+          "video": {
+            "type": "null"
+          },
+          "ai_short_drama": {
             "type": "null"
           }
         }
@@ -609,6 +701,33 @@
           "asset_version_id": {
             "$ref": "#/$defs/reference"
           },
+          "music_source": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "project_id",
+                  "revision_id",
+                  "song_key"
+                ],
+                "properties": {
+                  "project_id": {
+                    "$ref": "#/$defs/id"
+                  },
+                  "revision_id": {
+                    "$ref": "#/$defs/id"
+                  },
+                  "song_key": {
+                    "$ref": "#/$defs/key"
+                  }
+                }
+              }
+            ]
+          },
           "states": {
             "type": "array",
             "maxItems": 1000,
@@ -632,6 +751,25 @@
           }
         },
         "allOf": [
+          {
+            "if": {
+              "required": [
+                "music_source"
+              ],
+              "properties": {
+                "music_source": {
+                  "type": "object"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "kind": {
+                  "const": "music"
+                }
+              }
+            }
+          },
           {
             "if": {
               "required": [
@@ -1556,6 +1694,838 @@
                   }
                 }
               ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "station://contracts/drafts/creative-video-project-content": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "station://contracts/drafts/creative-video-project-content",
+    "title": "CreativeVideoProjectContent (review draft)",
+    "description": "CV-1 approved shape for creative_video, with fixed reuse of existing Music project content and no music generation. Development service validation is in progress; this draft is not deployed. Cross-object references, permissions, immutable versions and release gates require service validation.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "schema_version",
+      "kind",
+      "category",
+      "creative_video"
+    ],
+    "properties": {
+      "schema_version": {
+        "const": 1
+      },
+      "kind": {
+        "const": "project-content"
+      },
+      "category": {
+        "const": "creative_video"
+      },
+      "overview": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "maxLength": 4000
+      },
+      "cover_file_id": {
+        "$ref": "#/$defs/optionalId"
+      },
+      "creative_video": {
+        "$ref": "#/$defs/creativeVideo"
+      }
+    },
+    "$defs": {
+      "id": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+      },
+      "optionalId": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/id"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "key": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 96,
+        "pattern": "^[a-zA-Z0-9_-]+$"
+      },
+      "optionalKey": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/key"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "label": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "optionalText": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "maxLength": 2000
+      },
+      "keyList": {
+        "type": "array",
+        "maxItems": 1000,
+        "uniqueItems": true,
+        "items": {
+          "$ref": "#/$defs/key"
+        }
+      },
+      "idList": {
+        "type": "array",
+        "maxItems": 1000,
+        "uniqueItems": true,
+        "items": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "fps": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "num",
+          "den"
+        ],
+        "properties": {
+          "num": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 240000
+          },
+          "den": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1001
+          }
+        }
+      },
+      "runRef": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "service_id",
+          "run_id"
+        ],
+        "properties": {
+          "service_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "run_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        }
+      },
+      "fixedFile": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "basis_revision_id",
+          "file_id",
+          "content_ref"
+        ],
+        "properties": {
+          "basis_revision_id": {
+            "$ref": "#/$defs/id"
+          },
+          "file_id": {
+            "$ref": "#/$defs/id"
+          },
+          "content_ref": {
+            "$ref": "station://contracts/v2/content-ref"
+          }
+        }
+      },
+      "musicSource": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "project_id",
+              "revision_id",
+              "file_id",
+              "content_ref"
+            ],
+            "properties": {
+              "kind": {
+                "const": "project_file"
+              },
+              "project_id": {
+                "$ref": "#/$defs/id"
+              },
+              "revision_id": {
+                "$ref": "#/$defs/id"
+              },
+              "file_id": {
+                "$ref": "#/$defs/id"
+              },
+              "content_ref": {
+                "$ref": "station://contracts/v2/content-ref"
+              },
+              "selection_purpose": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "asset_id",
+              "asset_version_id",
+              "file_id"
+            ],
+            "properties": {
+              "kind": {
+                "const": "world_asset"
+              },
+              "asset_id": {
+                "$ref": "#/$defs/id"
+              },
+              "asset_version_id": {
+                "$ref": "#/$defs/id"
+              },
+              "file_id": {
+                "$ref": "#/$defs/id"
+              }
+            }
+          }
+        ]
+      },
+      "brief": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "file_id",
+          "goal"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/$defs/key"
+          },
+          "file_id": {
+            "$ref": "#/$defs/optionalId"
+          },
+          "goal": {
+            "$ref": "#/$defs/label"
+          },
+          "client": {
+            "$ref": "#/$defs/optionalText"
+          },
+          "audience": {
+            "$ref": "#/$defs/optionalText"
+          },
+          "message": {
+            "$ref": "#/$defs/optionalText"
+          },
+          "action": {
+            "$ref": "#/$defs/optionalText"
+          },
+          "constraints_file_id": {
+            "$ref": "#/$defs/optionalId"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "right": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "subject_kind",
+          "subject_key",
+          "status",
+          "evidence_file_id"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/$defs/key"
+          },
+          "subject_kind": {
+            "enum": [
+              "take",
+              "file",
+              "asset",
+              "person",
+              "location",
+              "music"
+            ]
+          },
+          "subject_key": {
+            "$ref": "#/$defs/key"
+          },
+          "status": {
+            "enum": [
+              "unverified",
+              "cleared",
+              "restricted",
+              "expired"
+            ]
+          },
+          "evidence_file_id": {
+            "$ref": "#/$defs/optionalId"
+          },
+          "channels": {
+            "$ref": "#/$defs/keyList"
+          },
+          "territories": {
+            "$ref": "#/$defs/keyList"
+          },
+          "uses": {
+            "$ref": "#/$defs/keyList"
+          },
+          "expires_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "if": {
+          "properties": {
+            "status": {
+              "const": "cleared"
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "evidence_file_id": {
+              "$ref": "#/$defs/id"
+            }
+          }
+        }
+      },
+      "concept": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "file_id",
+          "status"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/$defs/key"
+          },
+          "file_id": {
+            "$ref": "#/$defs/optionalId"
+          },
+          "basis_brief_ref": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/fixedFile"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "enum": [
+              "candidate",
+              "selected",
+              "rejected"
+            ]
+          }
+        }
+      },
+      "sequence": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "shot_keys"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/$defs/key"
+          },
+          "label": {
+            "$ref": "#/$defs/label"
+          },
+          "shot_keys": {
+            "$ref": "#/$defs/keyList"
+          }
+        }
+      },
+      "shot": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "planned_frames",
+          "take_keys"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/$defs/key"
+          },
+          "planned_frames": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "script_file_id": {
+            "$ref": "#/$defs/optionalId"
+          },
+          "storyboard_file_id": {
+            "$ref": "#/$defs/optionalId"
+          },
+          "take_keys": {
+            "$ref": "#/$defs/keyList"
+          }
+        }
+      },
+      "take": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "shot_key",
+          "file_id",
+          "run_ref",
+          "status"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/$defs/key"
+          },
+          "shot_key": {
+            "$ref": "#/$defs/key"
+          },
+          "file_id": {
+            "$ref": "#/$defs/optionalId"
+          },
+          "run_ref": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/runRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "input_file_ids": {
+            "$ref": "#/$defs/idList"
+          },
+          "status": {
+            "enum": [
+              "candidate",
+              "selected",
+              "rejected",
+              "failed"
+            ]
+          }
+        }
+      },
+      "timelineItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "take_key",
+          "media_ref",
+          "source_in_frame",
+          "source_out_frame",
+          "timeline_in_frame"
+        ],
+        "properties": {
+          "take_key": {
+            "$ref": "#/$defs/key"
+          },
+          "media_ref": {
+            "$ref": "#/$defs/fixedFile"
+          },
+          "source_in_frame": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "source_out_frame": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "timeline_in_frame": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "edit": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "parent_key",
+          "project_file_id",
+          "fps",
+          "items"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/$defs/key"
+          },
+          "parent_key": {
+            "$ref": "#/$defs/optionalKey"
+          },
+          "project_file_id": {
+            "$ref": "#/$defs/optionalId"
+          },
+          "music_source": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/musicSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fps": {
+            "$ref": "#/$defs/fps"
+          },
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 10000,
+            "items": {
+              "$ref": "#/$defs/timelineItem"
+            }
+          },
+          "change_file_id": {
+            "$ref": "#/$defs/optionalId"
+          },
+          "state": {
+            "enum": [
+              "rough",
+              "review",
+              "picture_locked"
+            ]
+          }
+        }
+      },
+      "variant": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "edit_key",
+          "channel",
+          "territory",
+          "width",
+          "height",
+          "fps",
+          "target_frames",
+          "language"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/$defs/key"
+          },
+          "edit_key": {
+            "$ref": "#/$defs/optionalKey"
+          },
+          "channel": {
+            "$ref": "#/$defs/key"
+          },
+          "territory": {
+            "$ref": "#/$defs/key"
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 16384
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 16384
+          },
+          "fps": {
+            "$ref": "#/$defs/fps"
+          },
+          "target_frames": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "language": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 32
+          },
+          "subtitle_mode": {
+            "enum": [
+              "none",
+              "burned",
+              "separate"
+            ]
+          },
+          "audio_mode": {
+            "enum": [
+              "full",
+              "mute",
+              "music_only"
+            ]
+          }
+        }
+      },
+      "review": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "target_kind",
+          "target_key",
+          "basis_revision_id",
+          "kind",
+          "state",
+          "decision_by",
+          "record_file_id"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/$defs/key"
+          },
+          "target_kind": {
+            "enum": [
+              "edit",
+              "package"
+            ]
+          },
+          "target_key": {
+            "$ref": "#/$defs/key"
+          },
+          "basis_revision_id": {
+            "$ref": "#/$defs/id"
+          },
+          "kind": {
+            "enum": [
+              "creative",
+              "rights",
+              "technical",
+              "client"
+            ]
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "in_review",
+              "approved",
+              "changes_requested",
+              "rejected"
+            ]
+          },
+          "decision_by": {
+            "$ref": "#/$defs/optionalId"
+          },
+          "record_file_id": {
+            "$ref": "#/$defs/optionalId"
+          }
+        },
+        "if": {
+          "properties": {
+            "state": {
+              "enum": [
+                "approved",
+                "changes_requested",
+                "rejected"
+              ]
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "decision_by": {
+              "$ref": "#/$defs/id"
+            },
+            "record_file_id": {
+              "$ref": "#/$defs/id"
+            }
+          }
+        }
+      },
+      "package": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "variant_key",
+          "edit_key",
+          "media_file_id",
+          "attachment_file_ids",
+          "review_keys",
+          "state"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/$defs/key"
+          },
+          "variant_key": {
+            "$ref": "#/$defs/key"
+          },
+          "edit_key": {
+            "$ref": "#/$defs/key"
+          },
+          "media_file_id": {
+            "$ref": "#/$defs/id"
+          },
+          "attachment_file_ids": {
+            "$ref": "#/$defs/idList"
+          },
+          "review_keys": {
+            "$ref": "#/$defs/keyList"
+          },
+          "state": {
+            "enum": [
+              "candidate",
+              "ready",
+              "delivered"
+            ]
+          }
+        }
+      },
+      "creativeVideo": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "direction",
+          "brief",
+          "rights",
+          "concepts",
+          "selected_concept_key",
+          "sequences",
+          "shots",
+          "takes",
+          "edits",
+          "delivery_variants",
+          "reviews",
+          "packages"
+        ],
+        "properties": {
+          "direction": {
+            "enum": [
+              "promo",
+              "advertisement",
+              "brand_film",
+              "music_video"
+            ]
+          },
+          "music_source": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/musicSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "brief": {
+            "$ref": "#/$defs/brief"
+          },
+          "rights": {
+            "type": "array",
+            "maxItems": 1000,
+            "items": {
+              "$ref": "#/$defs/right"
+            }
+          },
+          "concepts": {
+            "type": "array",
+            "maxItems": 1000,
+            "items": {
+              "$ref": "#/$defs/concept"
+            }
+          },
+          "selected_concept_key": {
+            "$ref": "#/$defs/optionalKey"
+          },
+          "sequences": {
+            "type": "array",
+            "maxItems": 1000,
+            "items": {
+              "$ref": "#/$defs/sequence"
+            }
+          },
+          "shots": {
+            "type": "array",
+            "maxItems": 10000,
+            "items": {
+              "$ref": "#/$defs/shot"
+            }
+          },
+          "takes": {
+            "type": "array",
+            "maxItems": 10000,
+            "items": {
+              "$ref": "#/$defs/take"
+            }
+          },
+          "edits": {
+            "type": "array",
+            "maxItems": 1000,
+            "items": {
+              "$ref": "#/$defs/edit"
+            }
+          },
+          "delivery_variants": {
+            "type": "array",
+            "maxItems": 1000,
+            "items": {
+              "$ref": "#/$defs/variant"
+            }
+          },
+          "reviews": {
+            "type": "array",
+            "maxItems": 10000,
+            "items": {
+              "$ref": "#/$defs/review"
+            }
+          },
+          "packages": {
+            "type": "array",
+            "maxItems": 1000,
+            "items": {
+              "$ref": "#/$defs/package"
             }
           }
         }

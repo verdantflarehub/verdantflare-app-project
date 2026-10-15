@@ -1,10 +1,11 @@
+import { coverPosition, type CoverPosition } from './cover-position.ts'
 export type Category = 'character' | 'music' | 'video' | 'ai_short_drama'
 export interface ContentRef { store_id: string; artifact_id: string; version_id: string }
 export interface ProjectItem { project_id: string; head_revision_id: string; name: string; category: string; updated_at?: string; can_write?: boolean }
 export interface ProjectFile { file_id: string; path: string; role?: string; content_ref: ContentRef }
 export interface ProjectOpen {
   project_id: string; revision_id: string; head_revision_id?: string; parent_revision_id?: string; created_at?: string; can_write?: boolean
-  manifest: { project_id?: string; name: string; category: string; files: ProjectFile[]; domain_documents: { document_type: string; file_id: string }[]; run_refs?: RunRef[]; asset_refs?: AssetRef[] }
+  manifest: { project_id?: string; name: string; category: string; entry_document_id?: string; selections?: { purpose: string; file_ids: string[] }[]; files: ProjectFile[]; domain_documents: { document_type: string; file_id: string }[]; run_refs?: RunRef[]; asset_refs?: AssetRef[] }
 }
 export interface RunRef { service_id: string; run_id: string }
 export interface AssetRef { asset_id: string; asset_version_id: string; purpose: string }
@@ -30,6 +31,7 @@ export interface DramaVersion {
 }
 export interface DramaSelection { purpose: string; version_key: string; state_key?: string; segment_key?: string | null }
 export interface DramaGlobal {
+  music_source?: { project_id: string; revision_id: string; song_key: string } | null
   key: string; kind: 'script' | 'character' | 'wardrobe' | 'prop' | 'location' | 'sound' | 'music'; name: string
   states: DramaState[]; versions: DramaVersion[]; selected_versions: DramaSelection[]
   description: string | null; file_ids: string[]; reference_file_ids: string[]; review: DramaReview
@@ -73,6 +75,7 @@ export interface DramaEpisode { key: string; title: string; overview: string | n
 export interface DramaContinuity { key: string; name: string; kind: 'character' | 'wardrobe' | 'location' | 'prop' | 'voice' | 'general'; description: string | null; reference_file_ids: string[]; definition_refs: DefinitionRef[]; global_keys: string[]; asset_id: string | null; asset_version_id: string | null }
 export interface ProjectContent {
   schema_version: 1; kind: 'project-content'; category: Category; overview: string | null; cover_file_id: string | null
+  cover_position?: CoverPosition; cover_placeholder?: boolean
   character?: { name: string | null; portrait_file_id: string | null; portrait_prompt: string | null; sheet_file_id: string | null; sheet_prompt: string | null; fields: Field[]; extensions: Detail[] }
   music?: { artist: string | null; name: string | null; voice: { name: string | null; description: string | null; recordings: Detail[]; models: Detail[] }; songs: Detail[]; mvs: Detail[] }
   video?: { duration_seconds: number | null; aspect: string | null; output_file_id: string | null; storyboards: Detail[]; cast: Cast[] }
@@ -118,6 +121,10 @@ export function parseProjectContent(raw: string, project: ProjectOpen): ProjectC
   const category = d.category as Category
   if (['character', 'music', 'video', 'ai_short_drama'].some(key => key !== category && d[key] != null)) invalid()
   const result: ProjectContent = { schema_version: 1, kind: 'project-content', category, overview: text(d.overview), cover_file_id: reference(d.cover_file_id) }
+  result.cover_position = coverPosition(d.cover_position)
+  if (d.cover_placeholder !== undefined && typeof d.cover_placeholder !== 'boolean') invalid()
+  result.cover_placeholder = d.cover_placeholder === true
+  if (result.cover_placeholder && result.cover_file_id) invalid()
   const body = object(d[category])
   if (category === 'character') result.character = { name: text(body.name), portrait_file_id: reference(body.portrait_file_id), portrait_prompt: text(body.portrait_prompt), sheet_file_id: reference(body.sheet_file_id), sheet_prompt: text(body.sheet_prompt), fields: fields(body.fields), extensions: details(body.extensions) }
   if (category === 'music') {
@@ -228,9 +235,15 @@ export function parseProjectContent(raw: string, project: ProjectOpen): ProjectC
       if (!['script', 'character', 'wardrobe', 'prop', 'location', 'sound', 'music'].includes(String(g.kind))) invalid()
       if (review.state === 'approved' && !selected.length && !asset.asset_id) invalid()
       if (definition_review.state === 'approved' && !definition_refs.length) invalid()
+      let music_source: DramaGlobal['music_source'] = null
+      if (g.music_source != null) {
+        const s = recordObject(g.music_source, ['project_id', 'revision_id', 'song_key'])
+        if (g.kind !== 'music' || !uuid.test(String(s.project_id)) || !uuid.test(String(s.revision_id))) invalid()
+        music_source = { project_id: String(s.project_id), revision_id: String(s.revision_id), song_key: key(s.song_key) }
+      }
       const states = statesOf(g.states), versions = versionsOf(g.versions, 'global'), selected_versions = selectionsOf(g.selected_versions, versions, 'global')
       if (versions.some(v => !states.some(s => s.key === v.state_key))) invalid()
-      return { states, versions, selected_versions, key: key(g.key), kind: g.kind as DramaGlobal['kind'], name: required(g.name), description: text(g.description), file_ids: selected, reference_file_ids: references(g.reference_file_ids), review, definition_refs, definition_review, input_global_keys: keys(g.input_global_keys), generation_record_file_ids: references(g.generation_record_file_ids), ...asset }
+      return { states, versions, selected_versions, music_source, key: key(g.key), kind: g.kind as DramaGlobal['kind'], name: required(g.name), description: text(g.description), file_ids: selected, reference_file_ids: references(g.reference_file_ids), review, definition_refs, definition_review, input_global_keys: keys(g.input_global_keys), generation_record_file_ids: references(g.generation_record_file_ids), ...asset }
     }))
     const globalByKey = new Map(globals.map(g => [g.key, g]))
     if (globals.some(g => g.input_global_keys.some(k => k === g.key || !globalByKey.has(k)))) invalid()

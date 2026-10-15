@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { ProjectReader, readerError } from '../platform/project-reader'
-const props = withDefaults(defineProps<{ reader: ProjectReader; fileId?: string | null; kind: 'image' | 'audio' | 'video' | 'file'; label: string; thumbnail?: boolean }>(), { thumbnail: false })
+const props = withDefaults(defineProps<{ reader: ProjectReader; fileId?: string | null; kind: 'image' | 'audio' | 'video' | 'file'; label: string; thumbnail?: boolean; objectPosition?: { x: number; y: number } }>(), { thumbnail: false })
 const source = ref(''), error = ref(''), busy = ref(false), downloadPath = ref('')
 const viewer = ref<HTMLDialogElement | null>(null)
 let generation = 0
@@ -37,7 +37,7 @@ onBeforeUnmount(() => { generation++; viewer.value?.close() })
 <template>
   <div class="project-media" :class="[kind, { thumbnail }]" :aria-label="label">
     <template v-if="source">
-      <img v-if="kind === 'image' && thumbnail" :src="source" :alt="label" @error="error = '图片解码失败。'; source = ''">
+      <img v-if="kind === 'image' && thumbnail" :src="source" :alt="label" :style="objectPosition ? { objectPosition: `${objectPosition.x}% ${objectPosition.y}%` } : undefined" @error="error = '图片解码失败。'; source = ''">
       <button v-else-if="kind === 'image'" class="image-open" :aria-label="`放大${label}`" @click="viewer?.showModal()"><img :src="source" :alt="label" @error="error = '图片解码失败。'; source = ''"></button>
       <audio v-else-if="kind === 'audio'" :src="source" controls preload="metadata" :aria-label="label" @error="error = '浏览器无法播放此音频。'; source = ''" />
       <video v-else :src="source" controls playsinline preload="metadata" :aria-label="label" @error="error = '浏览器无法播放此视频。'; source = ''" />
