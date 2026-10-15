@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, triggerRef, watch } from 'vue'
 import { onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router'
 import { callTool, MCPRequestError } from '../platform/mcp'
-import { isProjectID, ProjectReader, readerError, type Detail, type ProjectItem } from '../platform/project-reader'
+import { isProjectID, ProjectReader, readerError, projectContentView, type Detail, type ProjectItem } from '../platform/project-reader'
 import ProjectMedia from '../components/ProjectMedia.vue'
 import ProjectPrompt from '../components/ProjectPrompt.vue'
 import ProjectCover from '../components/ProjectCover.vue'
@@ -13,6 +13,7 @@ import { projectCategories, isCategory, projectMenus, businessKey, commonMenus, 
 import ProjectShared from '../components/ProjectShared.vue'
 import CreateProjectPage from './CreateProjectPage.vue'
 import ProjectEditDialog from '../components/ProjectEditDialog.vue'
+import { hasProjectEditRecovery } from '../platform/project-edit'
 
 const route = useRoute(), router = useRouter()
 const { appSDK, dashboardHost } = useHost()
@@ -26,23 +27,24 @@ const listCategory = computed(() => categories.find(c => c.key === filter.value)
 const visibleCount = computed(() => Math.max(12, Math.min(100000, Number(query('shown')) || 12)))
 const creating = ref(false), createDialog = ref<HTMLDialogElement>()
 watch(creating, async open => { await nextTick(); if (open) createDialog.value?.showModal(); else createDialog.value?.close() })
-const editingReader = shallowRef<ProjectReader>(), editingMode = ref<'rename' | 'cover' | 'extension'>('rename'), editLoading = ref(false)
+const editingReader = shallowRef<ProjectReader>(), editingMode = ref<'rename' | 'cover' | 'extension'>('rename'), editLoading = ref(false), editRecovery = ref(false)
+function pendingEdit(id: string) { try { return hasProjectEditRecovery(appSDK.context.get(), window.localStorage, id) } catch { return true } }
 let editGeneration = 0
 async function editProject(item: ProjectItem, mode: 'rename' | 'cover' | 'extension') {
   const token = ++editGeneration; editingReader.value?.dispose(); editingReader.value = undefined; editLoading.value = true; listError.value = ''
   const next = new ProjectReader(item.project_id, item.head_revision_id)
-  try { await next.load(); if (!alive || token !== editGeneration) { next.dispose(); return }; if (!next.project?.can_write) throw new Error('当前身份没有编辑权限。'); editingMode.value = mode; editingReader.value = next }
+  try { await next.load(); if (!alive || token !== editGeneration) { next.dispose(); return }; if (!next.project?.can_write && !pendingEdit(item.project_id)) throw new Error('当前身份没有编辑权限。'); editingMode.value = mode; editingReader.value = next }
   catch (cause) { next.dispose(); if (alive && token === editGeneration) listError.value = readerError(cause) }
   finally { if (alive && token === editGeneration) editLoading.value = false }
 }
-function closeEdit() { editGeneration++; editingReader.value?.dispose(); editingReader.value = undefined }
+function closeEdit() { editGeneration++; editingReader.value?.dispose(); editingReader.value = undefined; editRecovery.value = !!projectID.value && pendingEdit(projectID.value) }
 function savedEdit(revision: string) { closeEdit(); listCache.clear(); if (projectID.value) void router.replace(link({ revision })); else void loadList() }
 function editCurrent(mode: 'rename' | 'cover' | 'extension') { if (project.value) void editProject({ project_id: project.value.project_id, head_revision_id: project.value.revision_id, name: project.value.manifest.name, category: project.value.manifest.category }, mode) }
 const listCache = new Map<string, ProjectItem[]>()
 const reader = shallowRef<ProjectReader | null>(null), loading = ref(false), error = ref('')
 const items = ref<ProjectItem[]>([]), listLoading = ref(false), listError = ref(''), listReady = ref(false)
 let request = 0, listRequest = 0, alive = true, signedOut = false
-const project = computed(() => reader.value?.project), content = computed(() => reader.value?.content)
+const project = computed(() => reader.value?.project), content = computed(() => projectContentView(project.value || null, reader.value?.content || null))
 const historical = computed(() => !!project.value?.head_revision_id && project.value.revision_id !== project.value.head_revision_id)
 const character = computed(() => content.value?.character), music = computed(() => content.value?.music), video = computed(() => content.value?.video), drama = computed(() => content.value?.ai_short_drama)
 const tabs = computed(() => projectMenus(project.value?.manifest.category || ''))
@@ -146,7 +148,7 @@ async function loadList() {
 }
 async function loadProject() {
   const current = ++request
-  reader.value?.dispose(); reader.value = null; error.value = ''; loading.value = false
+  reader.value?.dispose(); reader.value = null; error.value = ''; loading.value = false; editRecovery.value = false
   if (signedOut) return
   if (!projectID.value) { if (!listReady.value && !listLoading.value) void loadList(); return }
   loading.value = true
@@ -156,6 +158,7 @@ async function loadProject() {
     await next.load()
     if (!alive || current !== request) return
     triggerRef(reader)
+    editRecovery.value = pendingEdit(projectID.value)
     // Pin an unversioned deep link once; subsequent refreshes keep this revision.
     if (!revisionID.value || query('category') !== next.project!.manifest.category) await router.replace(link({ revision: next.project!.revision_id, category: next.project!.manifest.category }))
   } catch (cause) { if (alive && current === request) { next.dispose(); reader.value = null; error.value = readerError(cause) } }
@@ -200,6 +203,7 @@ onBeforeUnmount(() => { closeEdit(); alive = false; request++; listRequest++; re
         <div class="reference-row"><button v-if="!projectID" class="btn primary" @click="creating = true">＋ 新建项目</button><button v-if="project?.can_write && !historical" class="btn" @click="editCurrent('rename')">重命名</button><button v-if="project?.can_write && !historical" class="btn" @click="editCurrent('cover')">修改封面</button><RouterLink v-if="project" class="btn" :to="{ path: '/workspace', query: { project: projectID } }">本机工作副本</RouterLink><button class="btn" :disabled="loading || listLoading" @click="retry">刷新</button></div>
       </header>
 
+      <div v-if="project && editRecovery" class="revision-notice"><p>有一项原保存结果待确认，可在此固定修订继续查询和恢复。</p><button class="btn" :disabled="editLoading" @click="editCurrent('rename')">查询或恢复原保存</button></div>
       <template v-if="!projectID">
         <div class="list-tools">
           <input :value="search" type="search" aria-label="搜索项目名称" placeholder="搜索项目名称" @input="router.replace(link({ q: ($event.target as HTMLInputElement).value || undefined, shown: undefined }))">

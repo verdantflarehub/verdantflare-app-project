@@ -5,7 +5,7 @@ import { ProjectReader, readerError, type ProjectOpen } from '../platform/projec
 import { callTool } from '../platform/mcp'
 import { readProjectHistory } from '../platform/project-revisions'
 import { useHost } from '../platform/host'
-import { worldTarget } from '../platform/route-links'
+import { nativeRunTarget, worldTarget } from '../platform/route-links'
 import ProjectMedia from './ProjectMedia.vue'
 import DramaPublication from './drama/DramaPublication.vue'
 import DramaDocument from './drama/DramaDocument.vue'
@@ -23,6 +23,8 @@ const revisions = ref<ProjectOpen[]>([]), busy = ref(false), error = ref('')
 const currentRevision = computed(() => revisions.value.find(r => r.revision_id === q('fixed')))
 const runs = computed(() => project.value.manifest.run_refs || [])
 const run = computed(() => runs.value.find(r => `${r.service_id}:${r.run_id}` === q('run')))
+const nativeRun = computed(() => run.value ? nativeRunTarget(run.value.service_id, run.value.run_id) : null)
+const openingRun = ref(false)
 const refs = computed(() => project.value.manifest.asset_refs || [])
 const reference = computed(() => refs.value.find(r => `${r.asset_id}:${r.asset_version_id}:${r.purpose}` === q('reference')))
 const candidates = computed(() => props.reader.content?.ai_short_drama?.world_candidates || [])
@@ -52,6 +54,14 @@ async function openWorld() {
   try { const target = worldTarget(reference.value.asset_id, reference.value.asset_version_id); await appSDK.capabilities.call('navigation.openApp', { appId: target.appId, path: target.path }) }
   catch { if (alive) error.value = '无法打开固定资产，请确认数字世界已安装且当前身份有权访问。' }
 }
+async function openRun() {
+  const target = nativeRun.value
+  if (!target || openingRun.value || hidden) return
+  openingRun.value = true; error.value = ''
+  try { await appSDK.capabilities.call('navigation.openApp', { appId: target.appId, path: target.path }) }
+  catch { if (alive) error.value = '无法打开原任务，请确认原服务入口可用且当前身份有权访问；原任务 ID 已保留。' }
+  finally { if (alive) openingRun.value = false }
+}
 watch(() => [props.reader, props.tab], () => { generation++; error.value = ''; if (props.tab === 'revisions') void history() }, { immediate: true })
 const stop = appSDK.lifecycle.subscribe(event => {
   if (event === 'hidden') { hidden = true; generation++; fileGeneration++; busy.value = false; fileBusy.value = false }
@@ -75,7 +85,7 @@ onBeforeUnmount(() => { alive = false; generation++; fileGeneration++; stop() })
       <div v-else class="rows"><RouterLink v-for="r in revisions" :key="r.revision_id" :to="link({ fixed: r.revision_id })"><strong>{{ time(r.created_at) }}{{ r.revision_id === project.head_revision_id ? ' · 最新修订' : '' }}</strong><small>{{ r.revision_id }}</small></RouterLink></div>
     </template>
     <template v-else-if="tab === 'runs'">
-      <section v-if="q('run') && run" class="panel"><h2>原生运行</h2><dl><dt>服务</dt><dd>{{ run.service_id }}</dd><dt>运行</dt><dd>{{ run.run_id }}</dd><dt>状态</dt><dd>需由原生服务查询，项目引用不代表运行成功。</dd></dl></section><p v-else-if="q('run')" class="empty">运行不在当前项目修订中。</p><template v-else><h2>运行</h2><div class="rows"><RouterLink v-for="r in runs" :key="`${r.service_id}:${r.run_id}`" :to="link({ run: `${r.service_id}:${r.run_id}` })"><strong>{{ r.service_id }}</strong><small>{{ r.run_id }}</small></RouterLink></div><p v-if="!runs.length" class="empty">暂无关联运行。</p></template>
+      <section v-if="q('run') && run" class="panel"><h2>原生运行</h2><dl><dt>服务</dt><dd>{{ run.service_id }}</dd><dt>运行</dt><dd>{{ run.run_id }}</dd><dt>状态</dt><dd>需由原生服务查询，项目引用不代表运行成功。</dd></dl><button v-if="nativeRun" class="btn" :disabled="openingRun" @click="openRun">{{ openingRun ? '正在打开原任务…' : '打开原任务查询与恢复' }}</button><p v-else class="muted">此服务尚未提供可识别的原生任务入口，请凭上述原任务 ID 查询。</p></section><p v-else-if="q('run')" class="empty">运行不在当前项目修订中。</p><template v-else><h2>运行</h2><div class="rows"><RouterLink v-for="r in runs" :key="`${r.service_id}:${r.run_id}`" :to="link({ run: `${r.service_id}:${r.run_id}` })"><strong>{{ r.service_id }}</strong><small>{{ r.run_id }}</small></RouterLink></div><p v-if="!runs.length" class="empty">暂无关联运行。</p></template>
     </template>
     <template v-else-if="tab === 'references'">
       <section v-if="q('reference') && reference" class="panel"><h2>固定资产引用</h2><dl><dt>用途</dt><dd>{{ reference.purpose }}</dd><dt>资产</dt><dd>{{ reference.asset_id }}</dd><dt>版本</dt><dd>{{ reference.asset_version_id }}</dd></dl><button class="btn" @click="openWorld">打开来源详情</button></section><p v-else-if="q('reference')" class="empty">资产引用不在当前修订中。</p>

@@ -1,6 +1,10 @@
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 type Domain = 'project' | 'world'
-export interface AppTarget { appId: Domain; path: string }
+export interface AppTarget { appId: Domain | 'image-mcp-server' | 'video-mcp-server'; path: string }
+export function nativeRunTarget(service: string, run: string): AppTarget | null {
+  if (!['image', 'video'].includes(service) || !/^[a-zA-Z0-9_-]{1,256}$/.test(run)) return null
+  return { appId: service === 'image' ? 'image-mcp-server' : 'video-mcp-server', path: '/dashboard/tasks/' + run }
+}
 const invalid = (): never => { throw new Error('应用地址无效。') }
 function parsed(path: string): URL {
   if (typeof path !== 'string' || path.length > 4096 || !path.startsWith('/') || path.startsWith('//') || /[\\#\r\n]/.test(path)) invalid()

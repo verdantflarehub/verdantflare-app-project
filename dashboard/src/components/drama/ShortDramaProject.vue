@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ProjectReader, type DramaGlobal, type DramaUsage } from '../../platform/project-reader'
+import { ProjectReader, projectContentView, type DramaGlobal, type DramaUsage } from '../../platform/project-reader'
 import ProjectMedia from '../ProjectMedia.vue'
 import DramaProse from './DramaProse.vue'
 import { materialPreview, dramaText } from '../../platform/drama-presentation'
@@ -16,7 +16,7 @@ const route = useRoute(), router = useRouter(), q = (key: string) => typeof rout
 const searchDraft = ref(q('find'))
 watch(() => q('find'), value => { searchDraft.value = value })
 function search() { void router.replace(link({ find: searchDraft.value || undefined })) }
-const project = computed(() => props.reader.project!), drama = computed(() => props.reader.content!.ai_short_drama!)
+const project = computed(() => props.reader.project!), drama = computed(() => projectContentView(project.value, props.reader.content)!.ai_short_drama!)
 const kinds = [{ key: 'script', label: '剧本正文' }, { key: 'character', label: '人物卡片' }, { key: 'wardrobe', label: '服装造型' }, { key: 'prop', label: '道具' }, { key: 'location', label: '场景' }, { key: 'sound', label: '声音' }, { key: 'music', label: '配乐' }]
 const kindName = (key: string) => kinds.find(k => k.key === key)?.label || '设定'
 const material = computed(() => drama.value.globals.find(g => g.key === q('material')))

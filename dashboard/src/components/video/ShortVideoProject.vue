@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { ProjectReader, type Cast } from '../../platform/project-reader'
+import { ProjectReader, projectContentView, type Cast } from '../../platform/project-reader'
 import ProjectMedia from '../ProjectMedia.vue'
 import ProjectPrompt from '../ProjectPrompt.vue'
 import ProjectEditDialog from '../ProjectEditDialog.vue'
@@ -13,7 +13,7 @@ const editing = ref<'cast' | 'remove-cast'>()
 const canEdit = computed(() => project.value.can_write === true && project.value.revision_id === project.value.head_revision_id)
 function saved(revision: string) { editing.value = undefined; void router.replace({ path: route.path, query: { ...route.query, revision, item: undefined } }) }
 const project = computed(() => props.reader.project!)
-const content = computed(() => props.reader.content!)
+const content = computed(() => projectContentView(project.value, props.reader.content)!)
 const video = computed(() => content.value.video!)
 const item = computed(() => typeof route.query.item === 'string' ? route.query.item : '')
 const castDetail = computed(() => video.value.cast.find(entry => entry.key === item.value))

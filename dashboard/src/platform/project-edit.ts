@@ -14,6 +14,14 @@ const identity = (c: Readonly<Context>) => JSON.stringify([c.userId, c.organizat
 const validID = (id: unknown) => typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id)
 const fail = (message: string): never => { throw new Error(message) }
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T
+function recoveryKey(context: Readonly<Context>, projectID: string) {
+  return 'project.edit.v1:' + JSON.stringify([context.userId, context.organizationId, context.stationId, context.installationId, projectID])
+}
+/** A pending save stays reachable after its successful commit makes the displayed revision historical. */
+export function hasProjectEditRecovery(context: Readonly<Context>, storage: RecoveryStorage, projectID: string): boolean {
+  if (context.appId !== 'project' || !validID(projectID)) return false
+  try { return storage.getItem(recoveryKey(context, projectID)) !== null } catch { return true }
+}
 /** Match Go CommitRequest / Changes field order and escaping for exact recovery. */
 export function orderedEdit(request: EditRequest): EditRequest {
   const c = request.changes
@@ -67,7 +75,7 @@ export async function verifyEditReadback(request: EditRequest, project: ProjectO
 export function createProjectEditor(sdk: AppSDK, storage: RecoveryStorage, projectID: string) {
   const context = sdk.context.get(), initial = identity(context)
   if (context.appId !== 'project' || !validID(projectID)) fail('项目地址无效。')
-  const key = 'project.edit.v1:' + JSON.stringify([context.userId, context.organizationId, context.stationId, context.installationId, projectID])
+  const key = recoveryKey(context, projectID)
   let disposed = false, hidden = false, working = false, state: EditState = 'unknown'
   const controllers = new Set<AbortController>()
   function live() { if (disposed || identity(sdk.context.get()) !== initial) fail('会话已变化，请重新打开项目。原保存记录已保留。') }

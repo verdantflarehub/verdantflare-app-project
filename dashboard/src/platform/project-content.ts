@@ -81,6 +81,14 @@ export interface ProjectContent {
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
+/** Empty business views keep creation controls reachable; they are never persisted as a document. */
+export function projectContentView(project: ProjectOpen | null, content: ProjectContent | null): ProjectContent | null {
+  if (content || !project) return content
+  const category = project.manifest.category
+  if (!['character', 'music', 'video', 'ai_short_drama'].includes(category)) return null
+  return parseProjectContent(JSON.stringify({ schema_version: 1, kind: 'project-content', category, [category]: category === 'ai_short_drama' ? { episodes: [] } : {} }), project)
+}
+
 /** Reads the central project-content document; never infers content from MD or filenames. */
 export function parseProjectContent(raw: string, project: ProjectOpen): ProjectContent {
   const invalid = (): never => { throw new Error('项目业务内容格式不正确，暂时无法展示。') }

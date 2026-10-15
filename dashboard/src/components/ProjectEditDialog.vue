@@ -28,7 +28,7 @@ async function readContent(): Promise<Record<string, any>> {
   const doc = project.value.manifest.domain_documents.find(d => d.document_type === 'project-content')
   if (doc) return JSON.parse((await baseReader.value.document(doc.file_id)).text) as Record<string, any>
   if (!isCategory(project.value.manifest.category)) throw new Error('当前项目类型不支持业务编辑。')
-  return { schema_version: 1, kind: 'project-content', category: project.value.manifest.category, [project.value.manifest.category]: {} }
+  return { schema_version: 1, kind: 'project-content', category: project.value.manifest.category, [project.value.manifest.category]: project.value.manifest.category === 'ai_short_drama' ? { episodes: [] } : {} }
 }
 async function changes(): Promise<EditChanges> {
   if (props.mode === 'rename') return { set_metadata: { name: name.value.trim() } }

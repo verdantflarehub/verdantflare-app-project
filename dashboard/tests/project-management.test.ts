@@ -1,12 +1,31 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { collectProjects, selectProjects, businessKey, projectMenus, restoredListView } from '../src/platform/project-management.ts'
-import { createProjectEditor, editHash, orderedEdit, verifyEditReadback, type EditRequest } from '../src/platform/project-edit.ts'
+import { createProjectEditor, hasProjectEditRecovery, editHash, orderedEdit, verifyEditReadback, type EditRequest } from '../src/platform/project-edit.ts'
 import { readProjectHistory } from '../src/platform/project-revisions.ts'
 import type { ProjectOpen } from '../src/platform/project-content.ts'
+import { projectContentView, parseProjectContent } from '../src/platform/project-content.ts'
 import type { AppSDK, Json, Lifecycle } from '../src/platform/types.ts'
 
 const id = (n: number) => `0199b501-0000-7000-8000-${n.toString(16).padStart(12, '0')}`
+test('new projects expose empty typed business views without creating or replacing their documents', () => {
+  for (const category of ['character', 'music', 'video', 'ai_short_drama']) {
+    const project: ProjectOpen = { project_id: id(1), revision_id: id(2), manifest: { name: '新项目', category, files: [], domain_documents: [] } }
+    const original = structuredClone(project)
+    const view = projectContentView(project, null)!
+    assert.equal(view.category, category)
+    assert.equal(view.cover_file_id, null)
+    assert.equal(view.overview, null)
+    if (category === 'character') assert.deepEqual(view.character?.extensions, [])
+    if (category === 'video') assert.deepEqual(view.video?.cast, [])
+    if (category === 'music') assert.deepEqual(view.music?.voice.models, [])
+    if (category === 'ai_short_drama') assert.deepEqual(view.ai_short_drama?.episodes, [])
+    assert.deepEqual(project, original)
+    const saved = parseProjectContent(JSON.stringify({ schema_version: 1, kind: 'project-content', category, overview: '实际文档', [category]: category === 'ai_short_drama' ? { episodes: [] } : {} }), project)
+    assert.equal(projectContentView(project, saved), saved)
+  }
+  assert.equal(projectContentView(null, null), null)
+})
 test('search, count and ordering use later pages; cancellation and cyclic cursors fail closed', async () => {
   const calls: unknown[] = []
   const all = await collectProjects('character', async args => {
@@ -61,6 +80,9 @@ test('editing journals the exact request before sending and recovers a lost resp
   const f = fixture(), editor = createProjectEditor(f.sdk, f.storage, id(10))
   await editor.begin(id(11), { set_metadata: { name: '项目<&>' } })
   const original = editor.pending()
+  assert.equal(hasProjectEditRecovery(f.sdk.context.get(), f.storage, id(10)), true)
+  assert.equal(hasProjectEditRecovery(f.sdk.context.get(), f.storage, id(11)), false)
+  assert.equal(hasProjectEditRecovery({ ...f.sdk.context.get(), userId: id(99) }, f.storage, id(10)), false)
   await assert.rejects(editor.submit(), /Lost response/)
   await assert.rejects(editor.begin(id(11), { set_metadata: { name: 'changed' } }), /原保存/)
   editor.dispose()
@@ -70,6 +92,7 @@ test('editing journals the exact request before sending and recovers a lost resp
   assert.equal(status.revision, id(12)); assert.equal(status.state, 'committed')
   await reopened.clearTerminal()
   assert.equal(reopened.pending(), undefined)
+  assert.equal(hasProjectEditRecovery(f.sdk.context.get(), f.storage, id(10)), false)
   assert.equal(f.records.size, 1, 'terminal request is archived')
   reopened.dispose()
 })

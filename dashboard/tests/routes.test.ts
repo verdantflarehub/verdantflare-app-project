@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { canonicalRoute, legacyStudioTarget, projectTarget, worldTarget, useAssetTarget } from '../src/platform/route-links.ts'
+import { canonicalRoute, legacyStudioTarget, nativeRunTarget, projectTarget, worldTarget, useAssetTarget } from '../src/platform/route-links.ts'
 const a = '01900000-0000-7000-8000-000000000001', b = '01900000-0000-7000-8000-000000000002'
 test('legacy bookmarks preserve the fixed revision, filters and app route', () => {
   const path = `/projects?project=${a}&revision=${b}&category=video&q=summer&tab=cast&item=lead`
@@ -20,4 +20,9 @@ test('cross application targets contain only app identity and fixed business ver
   assert.throws(() => projectTarget(a, 'head'))
   assert.throws(() => worldTarget(a, 'latest'))
   for (const path of ['//outside.example/projects', '/projects?project=x&project=y', '/projects#other', '/projects/../world']) assert.throws(() => canonicalRoute('project', path))
+})
+test('native runs keep original IDs and only expose verified media task routes', () => {
+  assert.deepEqual(nativeRunTarget('video', 'video_task_original'), { appId: 'video-mcp-server', path: '/dashboard/tasks/video_task_original' })
+  assert.deepEqual(nativeRunTarget('image', 'imgtask-original'), { appId: 'image-mcp-server', path: '/dashboard/tasks/imgtask-original' })
+  for (const [service, id] of [['music', 'unknown'], ['video', '../new'], ['image', 'id?submit=true'], ['video', '']]) assert.equal(nativeRunTarget(service, id), null)
 })
