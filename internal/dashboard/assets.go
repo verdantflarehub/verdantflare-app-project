@@ -100,7 +100,7 @@ func Load(root, version string) (*Assets, error) {
 			AccessRuleRef string `json:"accessRuleRef"`
 		} `json:"entry"`
 	}
-	if strictjson.Decode(bytes.NewReader(navigation), 64<<10, &nav) != nil || nav.SchemaVersion != 1 || nav.AppID != metadata.AppID || nav.AppVersion != version || nav.ArtifactDigest != metadata.Dashboard.ArtifactDigest || nav.Entry.EntryID != "main" || nav.Entry.Title != "项目" || nav.Entry.IconRef != "folder" || nav.Entry.Route != "/" || nav.Entry.AccessRuleRef != "project-read" {
+	if strictjson.Decode(bytes.NewReader(navigation), 64<<10, &nav) != nil || nav.SchemaVersion != 1 || nav.AppID != metadata.AppID || nav.AppVersion != version || nav.ArtifactDigest != metadata.Dashboard.ArtifactDigest || nav.Entry.EntryID != "main" || (nav.Entry.Title != "项目管理" && !(version == "0.1.0" && nav.Entry.Title == "项目")) || nav.Entry.IconRef != "folder" || nav.Entry.Route != "/" || nav.Entry.AccessRuleRef != "project-read" {
 		return nil, errors.New("invalid navigation declaration")
 	}
 	a := &Assets{declaration: d, index: index, navigation: navigation, files: map[string][]byte{}}

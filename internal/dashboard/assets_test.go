@@ -73,3 +73,27 @@ func TestPackageRejectsAssetAndNavigationTampering(t *testing.T) {
 		}
 	}
 }
+
+func TestPackageAcceptsCurrentNavigationTitleAndRejectsUnknownTitle(t *testing.T) {
+	for _, title := range []string{"项目管理", "其他应用"} {
+		root := fixture(t)
+		path := filepath.Join(root, "navigation-declaration.json")
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var nav map[string]any
+		if err = json.Unmarshal(raw, &nav); err != nil {
+			t.Fatal(err)
+		}
+		nav["entry"].(map[string]any)["title"] = title
+		raw, _ = json.Marshal(nav)
+		if err = os.WriteFile(path, raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+		_, err = Load(root, "0.1.0")
+		if (title == "项目管理") != (err == nil) {
+			t.Fatal(title, err)
+		}
+	}
+}
