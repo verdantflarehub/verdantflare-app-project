@@ -97,7 +97,7 @@ function castLink(cast: Cast) {
 </template>
 
 <style scoped>
-.short-video-page,.short-video-detail,.outputs { display:grid; gap:24px; min-width:0; }
+.short-video-page,.short-video-detail,.outputs { display:grid; gap:16px; min-width:0; }
 .panel { margin:0; padding:20px; border:1px solid var(--line); border-radius:12px; background:var(--shell-panel); min-width:0; }
 h2 { font-size:18px; font-weight:600; line-height:1.6; margin:0 0 16px; }h3 { font-size:17px; font-weight:600; line-height:1.6; }
 .overview { white-space:pre-wrap; line-height:1.8; margin-bottom:16px; }.muted,small,dt,.cast-role { color:var(--muted); }

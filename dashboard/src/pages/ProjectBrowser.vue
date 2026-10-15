@@ -191,15 +191,18 @@ onBeforeUnmount(() => { closeEdit(); alive = false; request++; listRequest++; re
 <template>
   <main class="main project-browser" :class="{ 'drama-browser': drama, 'video-browser': video }">
     <div class="workspace">
-      <nav v-if="projectID" class="breadcrumbs" aria-label="面包屑">
+      <nav class="breadcrumbs" aria-label="面包屑">
         <RouterLink :to="listLink">项目管理</RouterLink><span>/</span>
+        <template v-if="projectID">
         <template v-if="fromProject"><RouterLink :to="link({ category: 'video', project: fromProject.id, revision: fromProject.revision, tab: 'cast', item: query('fromItem') || undefined, from: undefined, fromRevision: undefined, fromName: undefined, fromItem: undefined })">{{ fromProject.name }}</RouterLink><span>/</span></template>
         <RouterLink :to="{ ...listLink, query: { ...listLink.query, category: project?.manifest.category || filter || undefined } }">{{ categoryName(project?.manifest.category || filter) }}</RouterLink><span>/</span>
         <template v-if="objectDetail"><RouterLink :to="link({ item: undefined, material: undefined, shot: undefined, scene: undefined, continuity: undefined, deliverable: undefined, file: undefined, fixed: undefined, run: undefined, reference: undefined, candidate: undefined, lighting: undefined, package: undefined, state: undefined, version: undefined, compare: undefined, tab: undefined, kind: undefined })">{{ project?.manifest.name || '项目' }}</RouterLink><span>/</span><RouterLink :to="link({ item: undefined, material: undefined, shot: undefined, scene: undefined, continuity: undefined, deliverable: undefined, file: undefined, fixed: undefined, run: undefined, reference: undefined, candidate: undefined, lighting: undefined, package: undefined, state: undefined, version: undefined, compare: undefined })">{{ activeTab?.label }}</RouterLink><span>/</span><span aria-current="page">{{ objectTitle || '详情' }}</span></template>
         <span v-else aria-current="page">{{ project?.manifest.name || '项目' }}</span>
+        </template>
+        <span v-else aria-current="page">{{ listCategory.label }}</span>
       </nav>
       <header class="heading">
-        <div class="heading-left"><div class="eyebrow">PROJECTS</div><h1>{{ projectID ? (objectTitle || project?.manifest.name || '项目') : listCategory.label }}</h1><p v-if="drama">{{ drama.episodes.length }} 集 · {{ drama.episodes.reduce((n, e) => n + e.scenes.reduce((n, s) => n + s.shots.length, 0), 0) }} 镜 · {{ activeTab?.label }}</p><p v-else-if="!projectID">{{ listCategory.description }}</p></div>
+        <div class="heading-left"><h1>{{ projectID ? (objectTitle || project?.manifest.name || '项目') : listCategory.label }}</h1><p v-if="drama">{{ drama.episodes.length }} 集 · {{ drama.episodes.reduce((n, e) => n + e.scenes.reduce((n, s) => n + s.shots.length, 0), 0) }} 镜 · {{ activeTab?.label }}</p><p v-else-if="!projectID">{{ listCategory.description }}</p></div>
         <div class="reference-row"><button v-if="!projectID" class="btn primary" @click="creating = true">＋ 新建项目</button><button v-if="project?.can_write && !historical" class="btn" @click="editCurrent('rename')">重命名</button><button v-if="project?.can_write && !historical" class="btn" @click="editCurrent('cover')">修改封面</button><RouterLink v-if="project" class="btn" :to="{ path: '/workspace', query: { project: projectID } }">本机工作副本</RouterLink><button class="btn" :disabled="loading || listLoading" @click="retry">刷新</button></div>
       </header>
 
@@ -265,21 +268,16 @@ onBeforeUnmount(() => { closeEdit(); alive = false; request++; listRequest++; re
 <style scoped>
 .project-return { display:flex; flex-wrap:wrap; gap:16px; align-items:center; margin:14px 0; }
 
-.drama-browser { line-height:1.55; padding: 27px clamp(20px, 3vw, 52px) 70px; }
-.drama-browser > .workspace { max-width: 1480px; margin: auto; }
-.drama-browser .heading { align-items: center; border-bottom: 1px solid var(--line); padding-bottom: 20px; margin-bottom: 20px; }
-.drama-browser .heading h1 { font-size:30px; line-height:1.28; font-weight:650; margin-bottom:8px; }
-.drama-browser .eyebrow { display:block; font-size:12px; font-weight:400; letter-spacing:.12em; margin-bottom:10px; }
-.drama-browser .breadcrumbs { font-size:12px; gap:9px; margin-bottom:13px; }
-.drama-browser .business-tabs { gap: 22px; border-bottom: 1px solid var(--line); margin: 0 0 30px; }
-.drama-browser .business-tabs a { padding: 12px 0; border: 0; border-bottom: 2px solid transparent; border-radius: 0; font-size: 13px; background: transparent; }
+.drama-browser { line-height:1.55; }
+.drama-browser .business-tabs { gap: 20px; border-bottom: 1px solid var(--line); margin: 0 0 16px; }
+.drama-browser .business-tabs a { padding: 8px 0; border: 0; border-bottom: 2px solid transparent; border-radius: 0; font-size: 13px; background: transparent; }
 .drama-browser .business-tabs a.active { background:transparent; color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
 .drama-browser :deep(a:focus-visible), .drama-browser :deep(button:focus-visible), .drama-browser :deep(input:focus-visible), .drama-browser :deep(select:focus-visible), .drama-browser :deep(textarea:focus-visible), .drama-browser :deep(summary:focus-visible) { outline:2px solid var(--accent); outline-offset:3px; }
 .drama-browser :deep(.btn:hover) { border-color:var(--accent); }
 .revision-notice { display:flex; align-items:center; justify-content:space-between; gap:16px; border-left:2px solid var(--accent); background:var(--shell-panel); padding:12px 16px; margin-bottom:22px; font-size:13px; }
 .revision-notice p { color:var(--muted); font-size:12px; margin-top:5px; line-height:1.8; }
 .revision-notice .btn { flex-shrink:0; }
-@media(max-width:800px) { .drama-browser .heading h1 { font-size:25px; }.drama-browser .business-tabs { gap:16px; }.revision-notice { flex-wrap:wrap; } }
+@media(max-width:800px) { .drama-browser .business-tabs { gap:16px; }.revision-notice { flex-wrap:wrap; } }
 
 .project-browser { overflow-wrap: anywhere; }
 .create-dialog { position:fixed; inset:10vh 0 auto; margin:auto; width:min(640px, calc(100vw - 32px)); border:1px solid var(--line); border-radius:12px; color:var(--ink); background:var(--panel); padding:20px; z-index:20; max-height:90vh; overflow:auto; }
@@ -295,14 +293,14 @@ onBeforeUnmount(() => { closeEdit(); alive = false; request++; listRequest++; re
 .dialog-close { float:right; }
 .list-tools select { border:1px solid var(--line); padding:9px; border-radius:8px; color:var(--ink); background:var(--panel); }
 .eyebrow { color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .14em; }
-.breadcrumbs { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; font-size: 13px; color: var(--muted); }
+.breadcrumbs { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; font-size: 13px; color: var(--muted); }
 .breadcrumbs a:hover { color: var(--accent); }
 .breadcrumbs [aria-current] { color: var(--ink); }
 .heading { gap: 16px; }
-.business-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 22px; }
-.business-tabs a { border: 1px solid transparent; padding: 9px 17px; border-radius: 8px; color: var(--muted); }
+.business-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+.business-tabs a { border: 1px solid transparent; padding: 7px 12px; border-radius: 8px; color: var(--muted); }
 .business-tabs a.active { color: var(--accent); background: var(--panel); border-color: var(--line); }
-.list-tools { display: flex; justify-content: space-between; gap: 18px; flex-wrap: wrap; align-items: start; margin-bottom: 22px; }
+.list-tools { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
 .list-tools .business-tabs { margin: 0; }
 input { width: 250px; max-width: 100%; padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--panel); }
 .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
@@ -313,9 +311,9 @@ a.project-card:hover, .project-card:has(a:hover) { border-color: var(--accent); 
 .card-text p { color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 small, .muted { color: var(--muted); }
 .song-glyph { aspect-ratio: 16 / 10; display: grid; place-items: center; font-size: 56px; line-height: 1; color: var(--accent); background: var(--subtle); }
-.sections { display: grid; gap: 24px; }
-.panel { padding: 24px; min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; }
-.panel > h2 { font-size: 18px; margin-bottom: 20px; }
+.sections { display: grid; gap: 16px; }
+.panel { padding: 20px; min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+.panel > h2 { font-size: 18px; margin-bottom: 16px; }
 .prose { white-space: pre-wrap; line-height: 1.8; }
 .character-basic { display: grid; grid-template-columns: minmax(180px, 280px) minmax(0, 1fr); gap: 28px; align-items: start; }
 .character-basic :deep(.image-open img) { aspect-ratio: 4 / 5; object-fit: cover; object-position: center top; }
@@ -351,13 +349,8 @@ small, .muted { color: var(--muted); }
 .error { color: var(--danger); }
 .more { display: flex; justify-content: center; gap: 16px; align-items: center; margin-top: 24px; color: var(--muted); }
 @media (max-width: 1150px) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .character-basic { grid-template-columns: minmax(140px, 220px) minmax(0, 1fr); gap: 18px; } .drama-grid, .drama-detail { grid-template-columns: minmax(0, 1fr); } }
-@media (max-width: 700px) { .project-browser { padding: 20px 16px 40px; } .cards, .character-basic, .drama-delivery-files { grid-template-columns: minmax(0, 1fr); } .panel { padding: 18px; } .fields { grid-template-columns: 84px minmax(0, 1fr); } .business-tabs a { padding: 8px 10px; } .list-tools, input { width: 100%; } .reference-row > :deep(.project-media) { flex-basis: 190px; } .drama-shots a { grid-template-columns: 70px minmax(0, 1fr); } .drama-shots a .muted:last-child { grid-column: 2; } }
-.video-browser { padding:27px clamp(20px,3vw,52px) 70px; }
-.video-browser > .workspace { max-width:1480px; margin:auto; }
-.video-browser .heading { align-items:start; }
-.video-browser .heading h1 { font-size:28px; line-height:1.35; }
-.video-browser .business-tabs { gap:7px; border-bottom:1px solid var(--line); padding-bottom:12px; margin:22px 0 0; }
-.video-browser .business-tabs a { padding:9px 16px; border:0; border-radius:8px; }
+@media (max-width: 700px) { .cards, .character-basic, .drama-delivery-files { grid-template-columns: minmax(0, 1fr); } .panel { padding: 17px; } .fields { grid-template-columns: 84px minmax(0, 1fr); } .business-tabs a { padding: 8px 10px; } .list-tools, input { width: 100%; } .reference-row > :deep(.project-media) { flex-basis: 190px; } .drama-shots a { grid-template-columns: 70px minmax(0, 1fr); } .drama-shots a .muted:last-child { grid-column: 2; } }
+.video-browser .business-tabs { gap:7px; border-bottom:1px solid var(--line); padding-bottom:8px; margin:0 0 16px; }
+.video-browser .business-tabs a { padding:7px 12px; border:0; border-radius:8px; }
 .video-browser .business-tabs a.active { background:var(--paper); color:var(--button-ink); }
-@media(max-width:700px) { .video-browser { padding:20px 16px 40px; } }
 </style>
