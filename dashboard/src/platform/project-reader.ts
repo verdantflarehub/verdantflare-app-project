@@ -1,4 +1,5 @@
 import { callTool, MCPRequestError } from './mcp.ts'
+import { ProjectReads } from './project-reads.ts'
 
 export * from './project-content.ts'
 export type { AssetRef as AssetReference } from './project-content.ts'
@@ -27,6 +28,8 @@ export class ProjectReader {
   content: ProjectContent | null = null
   private disposed = false
   private controller = new AbortController()
+  private documents = new Map<string, Promise<{ text: string; mime: string }>>()
+  private reads = new ProjectReads(error => error instanceof MCPRequestError && [502, 503, 504].includes(error.status))
   private downloads = new Map<string, Promise<Download>>()
   private blobs = new Map<string, Promise<string>>()
   private urls = new Set<string>()
@@ -41,6 +44,7 @@ export class ProjectReader {
     if (project.project_id !== this.projectID || !isProjectID(project.revision_id) || (this.revisionID && project.revision_id !== this.revisionID) || !Array.isArray(project.manifest?.files) || !Array.isArray(project.manifest?.domain_documents)) throw new Error('项目修订返回内容不正确。')
     if (typeof project.manifest.name !== 'string' || typeof project.manifest.category !== 'string' || new Set(project.manifest.files.map(f => f.file_id)).size !== project.manifest.files.length) throw new Error('项目文件清单不正确。')
     if (project.manifest.asset_refs != null && (!Array.isArray(project.manifest.asset_refs) || project.manifest.asset_refs.length > 10000 || project.manifest.asset_refs.some(ref => !isProjectID(ref.asset_id) || !isProjectID(ref.asset_version_id) || typeof ref.purpose !== 'string'))) throw new Error('项目资产引用不正确。')
+    if (project.head_revision_id !== undefined && !isProjectID(project.head_revision_id)) throw new Error('项目最新修订信息不正确。')
     this.project = project
     const documents = project.manifest.domain_documents.filter(d => d.document_type === 'project-content')
     if (documents.length > 1) throw new Error('当前修订包含重复的项目业务文档。')
@@ -56,6 +60,15 @@ export class ProjectReader {
   }
   private access() { return { project_id: this.projectID, project_revision_id: this.project!.revision_id } }
   async document(id: string): Promise<{ text: string; mime: string }> {
+    this.active()
+    this.file(id)
+    if (!this.documents.has(id)) {
+      const promise = this.reads.run(() => this.readDocument(id)).catch(error => { this.documents.delete(id); throw error })
+      this.documents.set(id, promise)
+    }
+    return this.documents.get(id)!
+  }
+  private async readDocument(id: string): Promise<{ text: string; mime: string }> {
     this.active()
     const file = this.file(id)
     const read = await callTool<{ mode: string; text: string; version: Download['version'] }>('artifact.read', { mode: 'text', content_ref: file.content_ref, access: this.access() }, this.projectID)
@@ -73,7 +86,7 @@ export class ProjectReader {
     this.active()
     if (!this.downloads.has(id)) {
       const file = this.file(id)
-      const promise = callTool<Download>('artifact.read', { mode: 'download', content_ref: file.content_ref, access: this.access() }, this.projectID).then(read => {
+      const promise = this.reads.run(() => callTool<Download>('artifact.read', { mode: 'download', content_ref: file.content_ref, access: this.access() }, this.projectID)).then(read => {
         this.active()
         if (!read.version || typeof read.version.mime !== 'string' || !Number.isSafeInteger(read.version.size) || read.version.size < 0 || !/^[a-f0-9]{64}$/.test(read.version.sha256) || typeof read.content_path !== 'string') throw new Error('媒体信息不完整。')
         if (read.version.store_id !== file.content_ref.store_id || read.version.artifact_id !== file.content_ref.artifact_id || read.version.version_id !== file.content_ref.version_id) throw new Error('媒体版本与当前项目不匹配。')
@@ -90,7 +103,7 @@ export class ProjectReader {
     if (!supported[kind].includes(mime)) throw new Error('文件格式不支持此类预览。')
     if (read.version.size > 128 * 1024 * 1024) throw new Error('文件超过浏览器预览大小，请下载查看。')
     if (!this.blobs.has(id)) {
-      const promise = (async () => {
+      const promise = this.reads.run(async () => {
         const response = await fetch(read.content_path, { credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: this.controller.signal })
         if (!response.ok) throw new MCPRequestError('媒体读取失败，请重试。', response.status)
         if (!response.body) throw new Error('媒体没有可读取的内容。')
@@ -112,10 +125,10 @@ export class ProjectReader {
         if (Array.from(new Uint8Array(digest), n => n.toString(16).padStart(2, '0')).join('') !== read.version.sha256) throw new Error('媒体内容校验失败，请重试。')
         this.active()
         const url = URL.createObjectURL(new Blob([blob], { type: mime })); this.urls.add(url); return url
-      })().catch(error => { this.blobs.delete(id); throw error })
+      }).catch(error => { this.blobs.delete(id); throw error })
       this.blobs.set(id, promise)
     }
     return this.blobs.get(id)!
   }
-  dispose() { this.disposed = true; this.controller.abort(); this.urls.forEach(url => URL.revokeObjectURL(url)); this.urls.clear(); this.blobs.clear(); this.downloads.clear() }
+  dispose() { this.disposed = true; this.reads.dispose(); this.controller.abort(); this.urls.forEach(url => URL.revokeObjectURL(url)); this.urls.clear(); this.blobs.clear(); this.downloads.clear(); this.documents.clear() }
 }

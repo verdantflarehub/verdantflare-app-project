@@ -2,13 +2,14 @@
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, triggerRef, watch } from 'vue'
 import { onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router'
 import { callTool } from '../platform/mcp'
-import { isProjectID, ProjectReader, readerError, type AssetReference, type Cast, type Detail, type ProjectItem } from '../platform/project-reader'
+import { isProjectID, ProjectReader, readerError, type AssetReference, type Detail, type ProjectItem } from '../platform/project-reader'
 import { worldTarget } from '../platform/route-links'
 import ProjectMedia from '../components/ProjectMedia.vue'
 import ProjectPrompt from '../components/ProjectPrompt.vue'
 import ProjectCover from '../components/ProjectCover.vue'
 import { useHost } from '../platform/host'
 import ShortDramaProject from '../components/drama/ShortDramaProject.vue'
+import ShortVideoProject from '../components/video/ShortVideoProject.vue'
 
 const route = useRoute(), router = useRouter()
 const { appSDK, dashboardHost } = useHost()
@@ -23,6 +24,7 @@ let navigationRequest: AbortController | undefined
 const items = ref<ProjectItem[]>([]), cursor = ref(''), listLoading = ref(false), listError = ref(''), listReady = ref(false)
 let request = 0, listRequest = 0, alive = true, signedOut = false
 const project = computed(() => reader.value?.project), content = computed(() => reader.value?.content)
+const historical = computed(() => !!project.value?.head_revision_id && project.value.revision_id !== project.value.head_revision_id)
 const character = computed(() => content.value?.character), music = computed(() => content.value?.music), video = computed(() => content.value?.video), drama = computed(() => content.value?.ai_short_drama)
 const tabs = computed(() => project.value?.manifest.category === 'character'
   ? [{ key: 'setting', label: '角色设定' }, { key: 'extensions', label: '角色扩展' }]
@@ -31,6 +33,8 @@ const tabs = computed(() => project.value?.manifest.category === 'character'
     : project.value?.manifest.category === 'video' ? [{ key: 'storyboards', label: '故事板' }, { key: 'cast', label: '角色创作' }]
       : project.value?.manifest.category === 'ai_short_drama' ? [{ key: 'overview', label: '概览' }, { key: 'script', label: '剧本与设定' }, { key: 'materials', label: '素材设定' }, { key: 'production', label: '镜头制作' }, { key: 'delivery', label: '成果与交付' }] : [])
 const activeTab = computed(() => tabs.value.find(t => t.key === (({ episodes: 'script', continuity: 'script', tasks: 'production' } as Record<string, string>)[query('tab')] || query('tab'))) || tabs.value[0])
+const dramaMaterial = computed(() => drama.value?.globals.find(g => g.key === query('material')))
+const dramaKindName = computed(() => ({ script: '剧本正文', character: '人物卡片', wardrobe: '服装造型', prop: '道具', location: '场景', sound: '声音', music: '配乐' }[dramaMaterial.value?.kind || 'character']))
 const dramaEpisode = computed(() => query('episode') ? drama.value?.episodes.find(ep => ep.key === query('episode')) : drama.value?.episodes[0])
 const dramaScene = computed(() => dramaEpisode.value?.scenes.find(scene => scene.key === query('scene')))
 const dramaShot = computed(() => dramaScene.value?.shots.find(shot => shot.key === query('shot')))
@@ -44,15 +48,22 @@ const entries = computed<Detail[]>(() => {
   }
 })
 const detail = computed(() => entries.value.find(d => d.key === query('item')))
+const previousPage = computed(() => {
+  void route.fullPath
+  const back = router.options.history.state.back
+  if (typeof back !== 'string' || !back.startsWith('/projects?')) return null
+  const previous = router.resolve(back)
+  return previous.query.project === projectID.value ? previous : null
+})
+
 const filtered = computed(() => items.value.filter(p => p.name.toLocaleLowerCase().includes(search.value.trim().toLocaleLowerCase())))
 const resultKind = computed(() => activeTab.value?.key === 'extensions' ? 'image' : activeTab.value?.key === 'songs' ? 'audio' : 'video')
 const fromProject = computed(() => isProjectID(query('from')) && isProjectID(query('fromRevision')) ? { id: query('from'), revision: query('fromRevision'), name: query('fromName') || '短视频' } : null)
 const value = (text?: string | null) => text?.trim() ? text : '未填写'
 const duration = (seconds?: number | null) => seconds == null ? '时长未填写' : `${seconds} 秒`
-function link(change: Record<string, string | undefined>) { return { path: '/projects', query: { ...route.query, ...change } } }
-const listLink = computed(() => link({ project: undefined, revision: undefined, tab: undefined, item: undefined, episode: undefined, scene: undefined, shot: undefined, from: undefined, fromRevision: undefined, fromName: undefined, material: undefined, state: undefined, version: undefined, compare: undefined, deliverable: undefined, kind: undefined, find: undefined, status: undefined, view: undefined, purpose: undefined, segment: undefined, continuity: undefined }))
-function openProject(item: ProjectItem) { return link({ project: item.project_id, revision: item.head_revision_id, tab: undefined, item: undefined, episode: undefined, scene: undefined, shot: undefined, material: undefined, state: undefined, version: undefined, compare: undefined, deliverable: undefined, kind: undefined, find: undefined, status: undefined, view: undefined, purpose: undefined, segment: undefined, continuity: undefined }) }
-function castLink(cast: Cast) { return link({ project: cast.project_id!, revision: cast.revision_id!, tab: 'setting', item: undefined, from: project.value!.project_id, fromRevision: project.value!.revision_id, fromName: project.value!.manifest.name }) }
+function link(change: Record<string, string | undefined>) { return { path: '/projects', query: { ...route.query, publish: undefined, publication: undefined, ...change } } }
+const listLink = computed(() => link({ project: undefined, revision: undefined, tab: undefined, item: undefined, episode: undefined, scene: undefined, shot: undefined, from: undefined, fromRevision: undefined, fromName: undefined, material: undefined, state: undefined, version: undefined, compare: undefined, deliverable: undefined, kind: undefined, find: undefined, status: undefined, view: undefined, purpose: undefined, segment: undefined, continuity: undefined, returnMaterial: undefined }))
+function openProject(item: ProjectItem) { return link({ project: item.project_id, revision: item.head_revision_id, tab: undefined, item: undefined, episode: undefined, scene: undefined, shot: undefined, material: undefined, state: undefined, version: undefined, compare: undefined, deliverable: undefined, kind: undefined, find: undefined, status: undefined, view: undefined, purpose: undefined, segment: undefined, continuity: undefined, returnMaterial: undefined }) }
 async function openWorld(ref: AssetReference) {
   navigationRequest?.abort(); const controller = new AbortController(); navigationRequest = controller; navigationError.value = ''
   try { const target = worldTarget(ref.asset_id, ref.asset_version_id); await appSDK.capabilities.call('navigation.openApp', { appId: target.appId, path: target.path }, { signal: controller.signal }) }
@@ -135,13 +146,14 @@ onBeforeUnmount(() => { alive = false; request++; listRequest++; navigationReque
 </script>
 
 <template>
-  <main class="main project-browser" :class="{ 'drama-browser': drama }">
+  <main class="main project-browser" :class="{ 'drama-browser': drama, 'video-browser': video }">
     <div class="workspace">
       <nav v-if="projectID" class="breadcrumbs" aria-label="面包屑">
         <RouterLink :to="listLink">项目管理</RouterLink><span>/</span>
         <template v-if="fromProject"><RouterLink :to="link({ project: fromProject.id, revision: fromProject.revision, tab: 'cast', item: undefined, from: undefined, fromRevision: undefined, fromName: undefined })">{{ fromProject.name }}</RouterLink><span>/</span></template>
         <RouterLink :to="{ ...listLink, query: { ...listLink.query, category: project?.manifest.category || filter || undefined } }">{{ categoryName(project?.manifest.category || filter) }}</RouterLink><span>/</span>
         <template v-if="drama && query('shot')"><RouterLink :to="link({ episode: undefined, scene: undefined, shot: undefined })">{{ project?.manifest.name || '项目' }}</RouterLink><span>/</span><RouterLink :to="link({ scene: undefined, shot: undefined })">{{ dramaEpisode?.title || '分集' }}</RouterLink><span>/</span><span aria-current="page">{{ dramaShot?.title || '镜头' }}</span></template>
+        <template v-else-if="drama && query('material')"><RouterLink :to="link({ tab: 'overview', material: undefined, state: undefined, version: undefined, compare: undefined, returnMaterial: undefined })">{{ project?.manifest.name }}</RouterLink><span>/</span><RouterLink :to="link({ kind: dramaMaterial?.kind, material: undefined, state: undefined, version: undefined, compare: undefined, returnMaterial: undefined })">{{ dramaKindName }}</RouterLink><span>/</span><span aria-current="page">{{ dramaMaterial?.name || '资料' }}</span></template>
         <template v-else-if="query('item')"><RouterLink :to="link({ item: undefined, tab: undefined })">{{ project?.manifest.name || '项目' }}</RouterLink><span>/</span><RouterLink :to="link({ item: undefined })">{{ activeTab?.label }}</RouterLink><span>/</span><span aria-current="page">{{ detail?.title || '详情' }}</span></template>
         <span v-else aria-current="page">{{ project?.manifest.name || '项目' }}</span>
       </nav>
@@ -168,11 +180,14 @@ onBeforeUnmount(() => { alive = false; request++; listRequest++; navigationReque
       <div v-else-if="loading" class="state" role="status">正在读取项目…</div>
       <div v-else-if="error" class="state error" role="alert">{{ error }}<button class="btn" @click="retry">重试</button></div>
       <template v-else-if="project && reader">
+        <section v-if="historical" class="revision-notice" role="status"><div><strong>正在查看历史版本</strong><p>图片、制作版本及选用状态均为当时记录，后续同步的素材不会出现在此版本中。</p></div><RouterLink class="btn" :to="link({ revision: undefined, state: undefined, version: undefined, compare: undefined })">查看最新版本</RouterLink></section>
+        <div v-if="drama" class="project-return"><button v-if="previousPage" class="btn" @click="router.back()">← 返回上一页</button><RouterLink v-if="activeTab?.key !== 'overview'" class="related-link" :to="{ path: route.path, query: { project: projectID, revision: revisionID, category: 'ai_short_drama', tab: 'overview' } }">返回项目概览</RouterLink></div>
         <div v-if="navigationError" class="state error" role="alert">{{ navigationError }}</div>
         <section v-if="project.manifest.asset_refs?.length" class="panel"><h2>数字世界引用</h2><div class="reference-row"><button v-for="ref in project.manifest.asset_refs" :key="`${ref.asset_id}:${ref.asset_version_id}:${ref.purpose}`" class="btn" @click="openWorld(ref)">{{ ref.purpose }} · 查看固定版本</button></div></section>
-        <nav v-if="drama || (!query('item') && !query('shot'))" class="business-tabs" aria-label="项目业务"><RouterLink v-for="tab in tabs" :key="tab.key" :class="{ active: activeTab?.key === tab.key }" :aria-current="activeTab?.key === tab.key ? 'page' : undefined" :to="link({ tab: tab.key, item: undefined, episode: undefined, scene: undefined, shot: undefined, material: undefined, state: undefined, version: undefined, compare: undefined, deliverable: undefined, kind: undefined, find: undefined, status: undefined, view: undefined, purpose: undefined, segment: undefined, continuity: undefined })">{{ tab.label }}</RouterLink></nav>
+        <nav v-if="drama || (!query('item') && !query('shot'))" class="business-tabs" aria-label="项目业务"><RouterLink v-for="tab in tabs" :key="tab.key" :class="{ active: activeTab?.key === tab.key }" :aria-current="activeTab?.key === tab.key ? 'page' : undefined" :to="link({ tab: tab.key, item: undefined, episode: undefined, scene: undefined, shot: undefined, material: undefined, state: undefined, version: undefined, compare: undefined, deliverable: undefined, kind: undefined, find: undefined, status: undefined, view: undefined, purpose: undefined, segment: undefined, continuity: undefined, returnMaterial: undefined })">{{ tab.label }}</RouterLink></nav>
         <div v-if="!content" class="state">暂无业务内容。</div>
         <ShortDramaProject v-else-if="drama" :reader="reader" :tab="activeTab?.key || 'script'" />
+        <ShortVideoProject v-else-if="video" :reader="reader" :tab="activeTab?.key || 'storyboards'" />
         <div v-else-if="query('item') && !detail" class="state">当前项目修订中没有这项内容。</div>
         <article v-else-if="detail" :key="`${project.revision_id}:${activeTab?.key}:${detail.key}`" class="sections">
           <section class="panel"><h2>概述</h2><p class="prose">{{ value(detail.overview) }}</p><p v-if="detail.duration_seconds != null" class="muted">{{ duration(detail.duration_seconds) }}</p><dl v-if="detail.fields.length" class="fields"><template v-for="(field, i) in detail.fields" :key="i"><dt>{{ field.label }}</dt><dd>{{ value(field.value) }}</dd></template></dl></section>
@@ -191,13 +206,8 @@ onBeforeUnmount(() => { alive = false; request++; listRequest++; navigationReque
             <section class="panel"><h2>干声录音</h2><p v-if="!music.voice.recordings.length" class="muted">未添加音频</p><article v-for="recording in music.voice.recordings" :key="recording.key" class="voice-item"><h3>{{ recording.title }}</h3><p class="prose">{{ value(recording.overview) }}</p><ProjectMedia v-for="id in recording.result_file_ids" :key="id" :reader="reader" :file-id="id" kind="audio" :label="recording.title" /><ProjectMedia v-if="!recording.result_file_ids.length" :reader="reader" kind="audio" :label="recording.title" /></article></section>
             <section class="panel"><h2>人声模型</h2><p v-if="!music.voice.models.length" class="muted">未添加人声模型</p><article v-for="model in music.voice.models" :key="model.key" class="voice-item"><h3>{{ model.title }}</h3><p class="prose">{{ value(model.overview) }}</p><dl v-if="model.fields.length" class="fields"><template v-for="(field, i) in model.fields" :key="i"><dt>{{ field.label }}</dt><dd>{{ value(field.value) }}</dd></template></dl><ProjectMedia v-for="id in model.file_ids" :key="id" :reader="reader" :file-id="id" kind="file" :label="reader.file(id).path" /><p v-if="!model.file_ids.length" class="muted">未添加模型文件</p><ProjectMedia v-for="id in model.result_file_ids" :key="id" :reader="reader" :file-id="id" kind="audio" :label="`${model.title}试听`" /></article></section>
           </template>
-          <template v-else-if="video && activeTab?.key === 'cast'">
-            <div v-if="!video.cast.length" class="state">未添加角色</div>
-            <div class="cards"><article v-for="cast in video.cast" :key="cast.key" class="project-card"><component :is="cast.project_id ? 'RouterLink' : 'div'" v-bind="cast.project_id ? { to: castLink(cast) } : {}"><ProjectMedia :reader="reader" :file-id="cast.portrait_file_id" kind="image" :label="cast.name" thumbnail /><div class="card-text"><h2>{{ cast.name }}</h2><p>本片角色：{{ cast.role === 'lead' ? '主角' : '配角' }}</p></div></component></article></div>
-          </template>
           <template v-else>
-            <section v-if="video && activeTab?.key === 'storyboards'" class="panel"><h2>短视频</h2><p class="prose">{{ value(content.overview) }}</p><p class="muted video-meta">{{ duration(video.duration_seconds) }}<span v-if="video.aspect"> · {{ video.aspect }}</span></p><ProjectMedia :reader="reader" :file-id="video.output_file_id" kind="video" :label="project.manifest.name" /></section>
-            <p v-else-if="music" class="prose">{{ value(content.overview) }}</p>
+            <p v-if="music" class="prose">{{ value(content.overview) }}</p>
             <div v-if="!entries.length" class="state">暂无{{ activeTab?.label }}内容。</div>
             <div class="cards"><RouterLink v-for="(entry, index) in entries" :key="entry.key" class="project-card" :to="link({ tab: activeTab?.key, item: entry.key })"><ProjectMedia v-if="entry.image_file_id || activeTab?.key !== 'songs'" :reader="reader" :file-id="entry.image_file_id" kind="image" :label="entry.title" thumbnail /><div v-else class="song-glyph" aria-hidden="true">♫</div><div class="card-text"><small v-if="activeTab?.key === 'storyboards'">{{ String(index + 1).padStart(2, '0') }} · {{ duration(entry.duration_seconds) }}</small><h2>{{ entry.title }}</h2><p>{{ value(entry.overview) }}</p></div></RouterLink></div>
           </template>
@@ -208,12 +218,23 @@ onBeforeUnmount(() => { alive = false; request++; listRequest++; navigationReque
 </template>
 
 <style scoped>
-.drama-browser { padding: 27px clamp(20px, 3vw, 52px) 70px; }
+.project-return { display:flex; flex-wrap:wrap; gap:16px; align-items:center; margin:14px 0; }
+
+.drama-browser { line-height:1.55; padding: 27px clamp(20px, 3vw, 52px) 70px; }
 .drama-browser > .workspace { max-width: 1480px; margin: auto; }
-.drama-browser .heading { align-items: start; border-bottom: 1px solid var(--line); padding-bottom: 20px; margin-bottom: 20px; }
-.drama-browser .business-tabs { gap: 22px; border-bottom: 1px solid var(--line); margin: 18px 0 25px; }
-.drama-browser .business-tabs a { padding: 10px 0 12px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; font-size: 13px; background: transparent; }
-.drama-browser .business-tabs a.active { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+.drama-browser .heading { align-items: center; border-bottom: 1px solid var(--line); padding-bottom: 20px; margin-bottom: 20px; }
+.drama-browser .heading h1 { font-size:30px; line-height:1.28; font-weight:650; margin-bottom:8px; }
+.drama-browser .eyebrow { display:block; font-size:12px; font-weight:400; letter-spacing:.12em; margin-bottom:10px; }
+.drama-browser .breadcrumbs { font-size:12px; gap:9px; margin-bottom:13px; }
+.drama-browser .business-tabs { gap: 22px; border-bottom: 1px solid var(--line); margin: 0 0 30px; }
+.drama-browser .business-tabs a { padding: 12px 0; border: 0; border-bottom: 2px solid transparent; border-radius: 0; font-size: 13px; background: transparent; }
+.drama-browser .business-tabs a.active { background:transparent; color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+.drama-browser :deep(a:focus-visible), .drama-browser :deep(button:focus-visible), .drama-browser :deep(input:focus-visible), .drama-browser :deep(select:focus-visible), .drama-browser :deep(textarea:focus-visible), .drama-browser :deep(summary:focus-visible) { outline:2px solid var(--accent); outline-offset:3px; }
+.drama-browser :deep(.btn:hover) { border-color:var(--accent); }
+.revision-notice { display:flex; align-items:center; justify-content:space-between; gap:16px; border-left:2px solid var(--accent); background:var(--shell-panel); padding:12px 16px; margin-bottom:22px; font-size:13px; }
+.revision-notice p { color:var(--muted); font-size:12px; margin-top:5px; line-height:1.8; }
+.revision-notice .btn { flex-shrink:0; }
+@media(max-width:800px) { .drama-browser .heading h1 { font-size:25px; }.drama-browser .business-tabs { gap:16px; }.revision-notice { flex-wrap:wrap; } }
 
 .project-browser { overflow-wrap: anywhere; }
 .eyebrow { color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .14em; }
@@ -274,4 +295,12 @@ small, .muted { color: var(--muted); }
 .more { display: flex; justify-content: center; gap: 16px; align-items: center; margin-top: 24px; color: var(--muted); }
 @media (max-width: 1150px) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .character-basic { grid-template-columns: minmax(140px, 220px) minmax(0, 1fr); gap: 18px; } .drama-grid, .drama-detail { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 700px) { .project-browser { padding: 20px 16px 40px; } .cards, .character-basic, .drama-delivery-files { grid-template-columns: minmax(0, 1fr); } .panel { padding: 18px; } .fields { grid-template-columns: 84px minmax(0, 1fr); } .business-tabs a { padding: 8px 10px; } .list-tools, input { width: 100%; } .reference-row > :deep(.project-media) { flex-basis: 190px; } .drama-shots a { grid-template-columns: 70px minmax(0, 1fr); } .drama-shots a .muted:last-child { grid-column: 2; } }
+.video-browser { padding:27px clamp(20px,3vw,52px) 70px; }
+.video-browser > .workspace { max-width:1480px; margin:auto; }
+.video-browser .heading { align-items:start; }
+.video-browser .heading h1 { font-size:28px; line-height:1.35; }
+.video-browser .business-tabs { gap:7px; border-bottom:1px solid var(--line); padding-bottom:12px; margin:22px 0 0; }
+.video-browser .business-tabs a { padding:9px 16px; border:0; border-radius:8px; }
+.video-browser .business-tabs a.active { background:var(--paper); color:var(--button-ink); }
+@media(max-width:700px) { .video-browser { padding:20px 16px 40px; } }
 </style>
