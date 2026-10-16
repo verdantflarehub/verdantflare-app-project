@@ -36,6 +36,8 @@ VerdantFlare AppCenter 项目管理应用。
 
 已有独立库若仅应用 `0001`／`0002`，由迁移账户显式运行 `project migrate-gates` 追加 `0003_locked_fence.sql`；不修改原历史、gate 状态或外部 fence。正常运行不会自动升级。
 
+0.1.16 启动要求生命周期扩展；已有库由迁移账户显式运行 `project migrate-lifecycle`，从受控配置设置 `PROJECT_DATABASE_URL` 与两个既有 fence。扩展使用独立记录，保留原迁移摘要及写门。迁移后须完成新版本滚动再启用删除；存在已删除记录时不得回退到不支持生命周期的旧版本。删除与恢复的业务语义以中央 Project／World 契约第 3.1 节为准。
+
 ## 3. 中央设计
 
 - [Project／World 服务拆分与页面准备](https://github.com/verdantflarehub/verdantflare-design/blob/dev/changes/change_20261011_project_world_service_split.md)。

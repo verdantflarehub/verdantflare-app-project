@@ -16,6 +16,7 @@ import { projectCategories, isCategory, projectMenus, businessKey, commonMenus, 
 import ProjectShared from '../components/ProjectShared.vue'
 import CreateProjectPage from './CreateProjectPage.vue'
 import ProjectEditDialog from '../components/ProjectEditDialog.vue'
+import ProjectLifecycleDialog from '../components/ProjectLifecycleDialog.vue'
 import { hasProjectEditRecovery } from '../platform/project-edit'
 import { sourceReturnCategory } from '../platform/project-source'
 
@@ -44,6 +45,10 @@ async function editProject(item: ProjectItem, mode: 'rename' | 'cover' | 'extens
 function closeEdit() { editGeneration++; editingReader.value?.dispose(); editingReader.value = undefined; editRecovery.value = !!projectID.value && pendingEdit(projectID.value) }
 function savedEdit(revision: string) { closeEdit(); listCache.clear(); if (projectID.value) void router.replace(link({ revision })); else void loadList() }
 function editCurrent(mode: 'rename' | 'cover' | 'extension') { if (project.value) void editProject({ project_id: project.value.project_id, head_revision_id: project.value.revision_id, name: project.value.manifest.name, category: project.value.manifest.category }, mode) }
+const lifecycleDialog = ref<InstanceType<typeof ProjectLifecycleDialog>>()
+const deletedFilter = computed(() => query('deleted') === 'true')
+async function lifecycleChanged() { listCache.clear(); if (projectID.value) await router.replace(listLink.value); else await loadList() }
+function deleteCurrent() { if (project.value) lifecycleDialog.value?.open({ project_id: project.value.project_id, head_revision_id: project.value.head_revision_id!, name: project.value.manifest.name, category: project.value.manifest.category, can_delete: project.value.can_delete, lifecycle_version: project.value.lifecycle_version }, 'delete') }
 const listCache = new Map<string, ProjectItem[]>()
 const reader = shallowRef<ProjectReader | null>(null), loading = ref(false), error = ref('')
 const items = ref<ProjectItem[]>([]), listLoading = ref(false), listError = ref(''), listReady = ref(false)
@@ -131,16 +136,16 @@ onBeforeRouteUpdate((to, from) => {
 async function restoreScroll() { await nextTick(); if (alive) dashboardHost.restoreScroll(positions.get(route.fullPath) || 0) }
 async function loadList() {
   if (signedOut) return
-  const current = ++listRequest, category = filter.value
+  const current = ++listRequest, category = filter.value, cacheKey = category + ':' + deletedFilter.value
   if (!isCategory(category)) return
   listLoading.value = true; listError.value = ''
-  const cached = listCache.get(category)
+  const cached = listCache.get(cacheKey)
   items.value = cached || []; listReady.value = !!cached
   try {
-    const all = await collectProjects(category, args => callTool('project.list', args), () => alive && !signedOut && current === listRequest)
+    const all = await collectProjects(category, args => callTool('project.list', { ...args, deleted: deletedFilter.value }), () => alive && !signedOut && current === listRequest)
     if (!alive || current !== listRequest) return
-    items.value = all; listCache.set(category, all); listReady.value = true
-  } catch (cause) { if (alive && current === listRequest) { if (cause instanceof MCPRequestError && [401, 403].includes(cause.status)) { items.value = []; listCache.delete(category); listReady.value = false }; listError.value = readerError(cause) } }
+    items.value = all; listCache.set(cacheKey, all); listReady.value = true
+  } catch (cause) { if (alive && current === listRequest) { if (cause instanceof MCPRequestError && [401, 403].includes(cause.status)) { items.value = []; listCache.delete(cacheKey); listReady.value = false }; listError.value = readerError(cause) } }
   finally { if (alive && current === listRequest) { listLoading.value = false; void restoreScroll() } }
 }
 async function loadProject() {
@@ -171,7 +176,7 @@ function logout() {
 if (!projectID.value && !isCategory(query('category'))) { let last = 'character'; try { const stored = sessionStorage.getItem(viewsKey + ':last') || ''; if (isCategory(stored)) last = stored } catch { /* Use first category. */ } void router.replace(link({ category: last, ...(listViews.get(last) || {}) })) }
 function retry() { signedOut = false; if (projectID.value) void loadProject(); else void loadList() }
 watch([projectID, revisionID], () => void loadProject(), { immediate: true })
-watch(filter, () => { listReady.value = false; if (!projectID.value) void loadList() })
+watch([filter, deletedFilter], () => { listReady.value = false; if (!projectID.value) void loadList() })
 watch(() => route.fullPath, () => { if (!loading.value && !listLoading.value) void restoreScroll() })
 const stopContext = appSDK.context.subscribe(next => { if (JSON.stringify([next.userId, next.organizationId, next.stationId, next.installationId, next.contextRevision]) !== JSON.stringify([scope.userId, scope.organizationId, scope.stationId, scope.installationId, scope.contextRevision])) logout() })
 const unsubscribe = appSDK.lifecycle.subscribe(event => {
@@ -198,16 +203,17 @@ onBeforeUnmount(() => { closeEdit(); alive = false; request++; listRequest++; re
         </template>
         <span v-else aria-current="page">{{ listCategory.label }}</span>
       </nav>
+      <ProjectLifecycleDialog ref="lifecycleDialog" @changed="lifecycleChanged" />
       <header class="heading">
         <div class="heading-left"><h1>{{ projectID ? (objectTitle || project?.manifest.name || '项目') : listCategory.label }}</h1><p v-if="drama">{{ drama.episodes.length }} 集 · {{ drama.episodes.reduce((n, e) => n + e.scenes.reduce((n, s) => n + s.shots.length, 0), 0) }} 镜 · {{ activeTab?.label }}</p><p v-else-if="!projectID">{{ listCategory.description }}</p></div>
-        <div class="reference-row"><button v-if="!projectID" class="btn primary" @click="creating = true">＋ 新建项目</button><button v-if="project?.can_write && !historical" class="btn" @click="editCurrent('rename')">重命名</button><button v-if="project?.can_write && !historical" class="btn" @click="editCurrent('cover')">修改封面</button><RouterLink v-if="project" class="btn" :to="{ path: '/workspace', query: { project: projectID } }">本机工作副本</RouterLink><button class="btn" :disabled="loading || listLoading" @click="retry">刷新</button></div>
+        <div class="reference-row"><button v-if="project?.can_delete && !historical" class="btn" @click="deleteCurrent">删除项目</button><button v-if="!projectID" class="btn primary" @click="creating = true">＋ 新建项目</button><button v-if="project?.can_write && !historical" class="btn" @click="editCurrent('rename')">重命名</button><button v-if="project?.can_write && !historical" class="btn" @click="editCurrent('cover')">修改封面</button><RouterLink v-if="project" class="btn" :to="{ path: '/workspace', query: { project: projectID } }">本机工作副本</RouterLink><button class="btn" :disabled="loading || listLoading" @click="retry">刷新</button></div>
       </header>
 
       <div v-if="project && editRecovery" class="revision-notice"><p>有一项原保存结果待确认，可在此固定修订继续查询和恢复。</p><button class="btn" :disabled="editLoading" @click="editCurrent('rename')">查询或恢复原保存</button></div>
       <template v-if="!projectID">
         <div class="list-tools project-list-tools">
           <input :value="search" type="search" aria-label="搜索项目名称" placeholder="搜索项目名称" @input="router.replace(link({ q: ($event.target as HTMLInputElement).value || undefined, shown: undefined }))">
-          <div class="list-summary">
+          <div class="list-summary"><label class="list-sort"><span class="muted">范围</span><select aria-label="项目范围" :value="deletedFilter ? 'deleted' : 'active'" @change="router.replace(link({ deleted: ($event.target as HTMLSelectElement).value === 'deleted' ? 'true' : undefined, shown: undefined }))"><option value="active">当前项目</option><option value="deleted">已删除项目</option></select></label>
             <span class="muted" role="status">{{ listLoading ? '正在读取完整项目目录…' : listReady ? '共 ' + filtered.length + ' 个项目' : '' }}</span>
             <label class="list-sort"><span class="muted">排序</span><select aria-label="项目排序" :value="sort" @change="router.replace(link({ sort: ($event.target as HTMLSelectElement).value, shown: undefined }))"><option value="updated">最近更新</option><option value="name">名称</option></select></label>
           </div>
@@ -216,9 +222,9 @@ onBeforeUnmount(() => { closeEdit(); alive = false; request++; listRequest++; re
         <div v-if="listLoading && !items.length" class="state" role="status">正在读取项目…</div>
         <div v-else-if="!filtered.length && !listError && !listLoading" class="state">{{ search ? '没有匹配的项目。' : '暂无' + listCategory.label + '项目。' }}</div>
         <div class="cards">
-          <article v-for="item in shown" :key="item.project_id" class="project-card-wrap"><RouterLink :key="`${item.project_id}:${item.head_revision_id}`" class="project-card" :to="openProject(item)">
+          <article v-for="item in shown" :key="item.project_id" class="project-card-wrap"><div v-if="deletedFilter" class="project-card"><div class="card-text"><small>已删除</small><h2>{{ item.name }}</h2><button v-if="item.can_delete" class="btn" @click="lifecycleDialog?.open(item, 'restore')">恢复项目</button></div></div><RouterLink v-else :key="`${item.project_id}:${item.head_revision_id}`" class="project-card" :to="openProject(item)">
             <ProjectCover :project="item" /><div class="card-text"><small>{{ categoryName(item.category) }}</small><h2 :title="item.name">{{ item.name }}</h2><small>更新于 {{ displayTime(item.updated_at) }}</small></div>
-          </RouterLink><details v-if="item.can_write" class="card-menu"><summary :aria-label="item.name + ' 的操作'">···</summary><button :disabled="editLoading" @click="editProject(item, 'rename')">重命名</button><button :disabled="editLoading" @click="editProject(item, 'cover')">修改封面</button></details></article>
+          </RouterLink><details v-if="!deletedFilter && (item.can_write || item.can_delete)" class="card-menu"><summary :aria-label="item.name + ' 的操作'">···</summary><button v-if="item.can_write" :disabled="editLoading" @click="editProject(item, 'rename')">重命名</button><button v-if="item.can_write" :disabled="editLoading" @click="editProject(item, 'cover')">修改封面</button><button v-if="item.can_delete" @click="lifecycleDialog?.open(item, 'delete')">删除项目</button></details></article>
         </div>
         <div v-if="filtered.length > visibleCount" class="more"><span>已显示 {{ shown.length }} / {{ filtered.length }} 个项目</span><button class="btn" :disabled="listLoading" @click="router.replace(link({ shown: String(visibleCount + 12) }))">加载更多</button></div>
       </template>

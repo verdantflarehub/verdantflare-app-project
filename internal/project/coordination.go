@@ -12,6 +12,12 @@ import (
 // It never performs a remote request and never reads World tables.
 func AuthorizeReservation(ctx context.Context, tx pgx.Tx, o coordination.Operation, g coordination.Grant) error {
 	p := Principal{OrganizationID: o.OrganizationID, SubjectID: o.SubjectID, RequestID: o.CommitID}
+	if err := lockActive(ctx, tx, p, g.ResourceID); err != nil {
+		if errors.Is(err, ErrForbidden) {
+			return coordination.ErrDenied
+		}
+		return err
+	}
 	value, err := role(ctx, tx, p, g.ResourceID)
 	if errors.Is(err, ErrForbidden) {
 		return coordination.ErrDenied
