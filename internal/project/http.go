@@ -111,6 +111,18 @@ func (s *Service) HTTPHandler(serviceToken, authorityToken string) (http.Handler
 				err = s.AuthorizeArtifact(r.Context(), p, req)
 			}
 			result = map[string]bool{"allowed": err == nil}
+		case "/internal/v1/project/delete", "/internal/v1/project/restore":
+			var req LifecycleRequest
+			if !decode(&req) {
+				return
+			}
+			result, err = s.ChangeLifecycle(r.Context(), p, req, r.URL.Path == "/internal/v1/project/delete")
+		case "/internal/v1/project/lifecycle_status":
+			var req LifecycleStatusRequest
+			if !decode(&req) {
+				return
+			}
+			result, err = s.LifecycleStatus(r.Context(), p, req)
 		case "/internal/v1/project/create":
 			var req CreateRequest
 			if !decode(&req) {
@@ -142,6 +154,12 @@ func (s *Service) HTTPHandler(serviceToken, authorityToken string) (http.Handler
 			req, err = decodeCommit(data)
 			if err == nil {
 				result, err = s.Commit(r.Context(), p, req)
+			}
+		case "/internal/v1/project/edit":
+			var req CommitRequest
+			req, err = decodeCommit(data)
+			if err == nil {
+				result, err = s.DashboardEdit(r.Context(), p, req)
 			}
 		case "/internal/v1/project/commit_status":
 			var req StatusRequest
@@ -211,7 +229,7 @@ func httpError(w http.ResponseWriter, p Principal, err error) {
 	for _, v := range []struct {
 		error
 		status int
-	}{{ErrInvalid, 400}, {ErrForbidden, 403}, {ErrNotFound, 404}, {ErrConflict, 409}, {ErrIdempotency, 409}, {ErrNotReady, 409}, {ErrDependency, 503}} {
+	}{{ErrBusy, 409}, {ErrLifecycleConflict, 409}, {ErrInvalid, 400}, {ErrForbidden, 403}, {ErrNotFound, 404}, {ErrConflict, 409}, {ErrIdempotency, 409}, {ErrNotReady, 409}, {ErrDependency, 503}} {
 		if errors.Is(err, v.error) {
 			status, code = v.status, v.Error()
 			break

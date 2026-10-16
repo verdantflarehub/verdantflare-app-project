@@ -56,6 +56,9 @@ func run() error {
 	if len(os.Args) == 2 && os.Args[1] == "activate-fresh" {
 		return migrations.ActivateFresh(ctx, db)
 	}
+	if len(os.Args) == 2 && os.Args[1] == "migrate-lifecycle" {
+		return migrations.UpgradeLifecycle(ctx, db)
+	}
 	if len(os.Args) == 2 && os.Args[1] == "migrate-gates" {
 		return migrations.UpgradeGates(ctx, db)
 	}

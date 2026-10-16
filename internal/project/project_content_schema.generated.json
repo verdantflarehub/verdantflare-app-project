@@ -32,6 +32,36 @@
       "cover_file_id": {
         "$ref": "#/$defs/reference"
       },
+      "cover_position": {
+        "anyOf": [
+          {
+            "type": "null"
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "x",
+              "y"
+            ],
+            "properties": {
+              "x": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "y": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              }
+            }
+          }
+        ]
+      },
+      "cover_placeholder": {
+        "type": "boolean"
+      },
       "character": {
         "$ref": "#/$defs/character"
       },
@@ -48,6 +78,27 @@
         "$ref": "station://contracts/drafts/creative-video-project-content#/$defs/creativeVideo"
       }
     },
+    "allOf": [
+      {
+        "if": {
+          "required": [
+            "cover_placeholder"
+          ],
+          "properties": {
+            "cover_placeholder": {
+              "const": true
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "cover_file_id": {
+              "type": "null"
+            }
+          }
+        }
+      }
+    ],
     "oneOf": [
       {
         "required": [
@@ -650,6 +701,33 @@
           "asset_version_id": {
             "$ref": "#/$defs/reference"
           },
+          "music_source": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "project_id",
+                  "revision_id",
+                  "song_key"
+                ],
+                "properties": {
+                  "project_id": {
+                    "$ref": "#/$defs/id"
+                  },
+                  "revision_id": {
+                    "$ref": "#/$defs/id"
+                  },
+                  "song_key": {
+                    "$ref": "#/$defs/key"
+                  }
+                }
+              }
+            ]
+          },
           "states": {
             "type": "array",
             "maxItems": 1000,
@@ -673,6 +751,25 @@
           }
         },
         "allOf": [
+          {
+            "if": {
+              "required": [
+                "music_source"
+              ],
+              "properties": {
+                "music_source": {
+                  "type": "object"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "kind": {
+                  "const": "music"
+                }
+              }
+            }
+          },
           {
             "if": {
               "required": [
@@ -1448,6 +1545,198 @@
           "$ref": "#/$defs/detail"
         }
       },
+      "musicSource": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "project_id",
+          "revision_id",
+          "kind",
+          "item_key",
+          "version_key",
+          "file_id"
+        ],
+        "properties": {
+          "project_id": {
+            "$ref": "#/$defs/id"
+          },
+          "revision_id": {
+            "$ref": "#/$defs/id"
+          },
+          "kind": {
+            "enum": [
+              "recording",
+              "model",
+              "song"
+            ]
+          },
+          "item_key": {
+            "$ref": "#/$defs/key"
+          },
+          "version_key": {
+            "$ref": "#/$defs/optionalKey"
+          },
+          "file_id": {
+            "$ref": "#/$defs/reference"
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "recording"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "version_key": {
+                  "type": "null"
+                },
+                "file_id": {
+                  "$ref": "#/$defs/id"
+                }
+              }
+            }
+          }
+        ],
+        "oneOf": [
+          {
+            "properties": {
+              "version_key": {
+                "$ref": "#/$defs/key"
+              },
+              "file_id": {
+                "type": "null"
+              }
+            }
+          },
+          {
+            "properties": {
+              "version_key": {
+                "type": "null"
+              },
+              "file_id": {
+                "$ref": "#/$defs/id"
+              }
+            }
+          }
+        ]
+      },
+      "musicVersion": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "label",
+          "kind",
+          "basis_revision_id",
+          "parent_version_key",
+          "change_note",
+          "file_refs",
+          "review",
+          "sources"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/$defs/key"
+          },
+          "label": {
+            "$ref": "#/$defs/name"
+          },
+          "kind": {
+            "enum": [
+              "model",
+              "demo",
+              "audio",
+              "master",
+              "video"
+            ]
+          },
+          "basis_revision_id": {
+            "$ref": "#/$defs/id"
+          },
+          "parent_version_key": {
+            "$ref": "#/$defs/optionalKey"
+          },
+          "change_note": {
+            "$ref": "#/$defs/name"
+          },
+          "file_refs": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1000,
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/versionFile"
+                },
+                {
+                  "properties": {
+                    "purpose": {
+                      "enum": [
+                        "output",
+                        "sample",
+                        "attachment"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "review": {
+            "$ref": "#/$defs/review"
+          },
+          "sources": {
+            "type": "array",
+            "maxItems": 1000,
+            "uniqueItems": true,
+            "items": {
+              "$ref": "#/$defs/musicSource"
+            }
+          }
+        }
+      },
+      "musicDetails": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "maxItems": 1000,
+        "items": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/detail"
+            },
+            {
+              "properties": {
+                "production": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "versions",
+                    "selected_version_key"
+                  ],
+                  "properties": {
+                    "versions": {
+                      "type": "array",
+                      "maxItems": 1000,
+                      "items": {
+                        "$ref": "#/$defs/musicVersion"
+                      }
+                    },
+                    "selected_version_key": {
+                      "$ref": "#/$defs/optionalKey"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
       "character": {
         "type": [
           "object",
@@ -1505,15 +1794,15 @@
                 "$ref": "#/$defs/details"
               },
               "models": {
-                "$ref": "#/$defs/details"
+                "$ref": "#/$defs/musicDetails"
               }
             }
           },
           "songs": {
-            "$ref": "#/$defs/details"
+            "$ref": "#/$defs/musicDetails"
           },
           "mvs": {
-            "$ref": "#/$defs/details"
+            "$ref": "#/$defs/musicDetails"
           }
         }
       },

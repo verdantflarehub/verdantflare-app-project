@@ -18,8 +18,9 @@ async function copy(text: string) {
 </template>
 
 <style scoped>
-.project-prompt { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
-summary { cursor: pointer; color: var(--muted); }
+.project-prompt { margin-top: 16px; border-top: 0.5px solid var(--vf-hairline-outer, var(--line)); padding-top: 12px; font-variant-numeric: tabular-nums; }
+summary { cursor: pointer; color: var(--muted); transition: color 150ms var(--vf-ease-out, cubic-bezier(0.16, 1, 0.3, 1)); }
+summary:hover { color: var(--accent); }
 p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 14px 0; }
 span { margin-left: 12px; color: var(--muted); }
 </style>

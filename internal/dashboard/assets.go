@@ -93,14 +93,15 @@ func Load(root, version string) (*Assets, error) {
 		AppVersion     string `json:"appVersion"`
 		ArtifactDigest string `json:"artifactDigest"`
 		Entry          struct {
-			EntryID       string `json:"entryId"`
-			Title         string `json:"title"`
-			IconRef       string `json:"iconRef"`
-			Route         string `json:"route"`
-			AccessRuleRef string `json:"accessRuleRef"`
+			EntryID       string             `json:"entryId"`
+			Title         string             `json:"title"`
+			IconRef       string             `json:"iconRef"`
+			Route         string             `json:"route"`
+			AccessRuleRef string             `json:"accessRuleRef"`
+			Children      *[]navigationChild `json:"children,omitempty"`
 		} `json:"entry"`
 	}
-	if strictjson.Decode(bytes.NewReader(navigation), 64<<10, &nav) != nil || nav.SchemaVersion != 1 || nav.AppID != metadata.AppID || nav.AppVersion != version || nav.ArtifactDigest != metadata.Dashboard.ArtifactDigest || nav.Entry.EntryID != "main" || nav.Entry.Title != "项目" || nav.Entry.IconRef != "folder" || nav.Entry.Route != "/" || nav.Entry.AccessRuleRef != "project-read" {
+	if strictjson.Decode(bytes.NewReader(navigation), 64<<10, &nav) != nil || nav.AppID != metadata.AppID || nav.AppVersion != version || nav.ArtifactDigest != metadata.Dashboard.ArtifactDigest || nav.Entry.EntryID != "main" || (nav.Entry.Title != "项目管理" && !(version == "0.1.0" && nav.Entry.Title == "项目")) || nav.Entry.IconRef != "folder" || nav.Entry.AccessRuleRef != "project-read" || !validProjectNavigation(nav.SchemaVersion, nav.Entry.Route, nav.Entry.Children) {
 		return nil, errors.New("invalid navigation declaration")
 	}
 	a := &Assets{declaration: d, index: index, navigation: navigation, files: map[string][]byte{}}
@@ -115,6 +116,41 @@ func Load(root, version string) (*Assets, error) {
 		a.files[name] = b
 	}
 	return a, nil
+}
+
+type navigationChild struct {
+	EntryID       string `json:"entryId"`
+	Title         string `json:"title"`
+	Route         string `json:"route"`
+	AccessRuleRef string `json:"accessRuleRef"`
+	Order         int    `json:"order"`
+}
+
+func validProjectNavigation(schema int, route string, children *[]navigationChild) bool {
+	if schema == 1 {
+		return route == "/" && children == nil
+	}
+	if schema != 2 || route != "" || children == nil || len(*children) != 4 {
+		return false
+	}
+	expected := []navigationChild{
+		{"character", "角色设计", "/projects?category=character", "project-read", 0},
+		{"music", "音乐制作", "/projects?category=music", "project-read", 1},
+		{"video", "创意视频", "/projects?category=video", "project-read", 2},
+		{"ai_short_drama", "短剧制作", "/projects?category=ai_short_drama", "project-read", 3},
+	}
+	for i, child := range *children {
+		// Current declarations use category paths. Existing immutable releases
+		// retain their original query routes and must remain loadable.
+		want := expected[i]
+		if child.Route == "/"+want.EntryID {
+			child.Route = want.Route
+		}
+		if child != want {
+			return false
+		}
+	}
+	return true
 }
 func MIME(name string) string {
 	switch path.Ext(name) {

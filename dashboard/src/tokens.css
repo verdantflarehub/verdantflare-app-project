@@ -21,6 +21,26 @@
       --shadow: 0 24px 100px rgba(21, 35, 30, .16);
       --shell-panel: rgba(255, 255, 255, .62);
       --shell-button: rgba(21, 35, 30, .055);
+      --vf-hairline-outer: rgba(21, 35, 30, 0.11);
+      --vf-hairline-inner: rgba(255, 255, 255, 0.78);
+      --vf-ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
+      --vf-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+      --vf-shadow-card:
+        0 0 0 0.5px var(--vf-hairline-outer),
+        inset 0 0.5px 0 var(--vf-hairline-inner),
+        0 2px 6px rgba(21, 35, 30, 0.04),
+        0 10px 24px -8px rgba(21, 35, 30, 0.06);
+      --vf-shadow-card-hover:
+        0 0 0 0.5px rgba(8, 126, 96, 0.34),
+        inset 0 0.5px 0 rgba(255, 255, 255, 0.92),
+        0 6px 16px -4px rgba(21, 35, 30, 0.08),
+        0 16px 32px -10px rgba(8, 126, 96, 0.1);
+      --vf-shimmer: linear-gradient(
+        105deg,
+        rgba(21, 35, 30, 0.04) 20%,
+        rgba(8, 126, 96, 0.12) 48%,
+        rgba(21, 35, 30, 0.04) 76%
+      );
       background: linear-gradient(140deg, #eef2ef, #e7ece7);
       color: var(--ink);
     }
@@ -46,6 +66,26 @@
       --shadow: 0 34px 100px rgba(0, 0, 0, .55);
       --shell-panel: rgba(239, 243, 237, 0.032);
       --shell-button: rgba(239, 243, 237, 0.05);
+      --vf-hairline-outer: rgba(236, 241, 234, 0.095);
+      --vf-hairline-inner: rgba(255, 255, 255, 0.06);
+      --vf-ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
+      --vf-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+      --vf-shadow-card:
+        0 0 0 0.5px var(--vf-hairline-outer),
+        inset 0 0.5px 0 var(--vf-hairline-inner),
+        0 4px 12px rgba(0, 0, 0, 0.28),
+        0 14px 28px -10px rgba(0, 0, 0, 0.42);
+      --vf-shadow-card-hover:
+        0 0 0 0.5px rgba(117, 199, 171, 0.36),
+        inset 0 0.5px 0 rgba(255, 255, 255, 0.11),
+        0 8px 20px -4px rgba(0, 0, 0, 0.48),
+        0 18px 36px -12px rgba(117, 199, 171, 0.14);
+      --vf-shimmer: linear-gradient(
+        105deg,
+        rgba(236, 241, 234, 0.04) 20%,
+        rgba(117, 199, 171, 0.14) 48%,
+        rgba(236, 241, 234, 0.04) 76%
+      );
       background: var(--bg);
       color: var(--ink);
     }

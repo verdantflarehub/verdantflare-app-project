@@ -1,5 +1,5 @@
 import { createApp, h } from 'vue'
-import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
+import { createRouter, RouterView } from 'vue-router'
 import Browser from './pages/ProjectBrowser.vue'
 import WorkspacePage from './pages/WorkspacePage.vue'
 import UseAssetPage from './pages/UseAssetPage.vue'
@@ -7,13 +7,14 @@ import PublicationPage from './pages/PublicationPage.vue'
 import CreateProjectPage from './pages/CreateProjectPage.vue'
 import { connectHost, disconnectHost } from './platform/host'
 import { canonicalRoute } from './platform/route-links'
+import { createProjectHistory } from './platform/project-history'
 import './base.css'
 
 const root = document.querySelector<HTMLElement>('#app')!
 
 async function mount() {
   const { appSDK: sdk, dashboardHost: host } = connectHost('project')
-  const router = createRouter({ history: createMemoryHistory(), routes: [
+  const router = createRouter({ history: createProjectHistory(), routes: [
     { path: '/', redirect: '/projects' },
     { path: '/projects', component: Browser },
     { path: '/create', component: CreateProjectPage },

@@ -1,15 +1,18 @@
+import { coverPosition, type CoverPosition } from './cover-position.ts'
+import { parseMusicProduction, type MusicProduction, type MusicGroup } from './music-production.ts'
 export type Category = 'character' | 'music' | 'video' | 'ai_short_drama' | 'creative_video'
 export interface ContentRef { store_id: string; artifact_id: string; version_id: string }
-export interface ProjectItem { project_id: string; head_revision_id: string; name: string; category: string }
+export interface ProjectItem { project_id: string; head_revision_id: string; name: string; category: string; updated_at?: string; can_write?: boolean; can_delete?: boolean; lifecycle_version?: number }
 export interface ProjectFile { file_id: string; path: string; role?: string; content_ref: ContentRef }
 export interface ProjectOpen {
-  project_id: string; revision_id: string
-  manifest: { name: string; category: string; files: ProjectFile[]; domain_documents: { document_type: string; file_id: string }[]; run_refs?: RunRef[]; asset_refs?: AssetRef[]; selections?: { purpose: string; file_ids: string[] }[] }
+  project_id: string; revision_id: string; head_revision_id?: string; parent_revision_id?: string; created_at?: string; can_write?: boolean; can_delete?: boolean; lifecycle_version?: number
+  manifest: { project_id?: string; name: string; category: string; entry_document_id?: string; selections?: { purpose: string; file_ids: string[] }[]; files: ProjectFile[]; domain_documents: { document_type: string; file_id: string }[]; run_refs?: RunRef[]; asset_refs?: AssetRef[] }
 }
 export interface RunRef { service_id: string; run_id: string }
 export interface AssetRef { asset_id: string; asset_version_id: string; purpose: string }
 export interface Field { label: string; value: string | null }
 export interface Detail {
+  production?: MusicProduction
   key: string; title: string; overview: string | null; fields: Field[]; image_file_id: string | null
   reference_file_ids: string[]; result_file_ids: string[]; file_ids: string[]
   prompt: string | null; lyrics: string | null; duration_seconds: number | null
@@ -30,6 +33,7 @@ export interface DramaVersion {
 }
 export interface DramaSelection { purpose: string; version_key: string; state_key?: string; segment_key?: string | null }
 export interface DramaGlobal {
+  music_source?: { project_id: string; revision_id: string; song_key: string } | null
   key: string; kind: 'script' | 'character' | 'wardrobe' | 'prop' | 'location' | 'sound' | 'music'; name: string
   states: DramaState[]; versions: DramaVersion[]; selected_versions: DramaSelection[]
   description: string | null; file_ids: string[]; reference_file_ids: string[]; review: DramaReview
@@ -90,6 +94,7 @@ export interface CreativeVideoContent {
 }
 export interface ProjectContent {
   schema_version: 1; kind: 'project-content'; category: Category; overview: string | null; cover_file_id: string | null
+  cover_position?: CoverPosition; cover_placeholder?: boolean
   character?: { name: string | null; portrait_file_id: string | null; portrait_prompt: string | null; sheet_file_id: string | null; sheet_prompt: string | null; fields: Field[]; extensions: Detail[] }
   music?: { artist: string | null; name: string | null; voice: { name: string | null; description: string | null; recordings: Detail[]; models: Detail[] }; songs: Detail[]; mvs: Detail[] }
   video?: { duration_seconds: number | null; aspect: string | null; output_file_id: string | null; storyboards: Detail[]; cast: Cast[] }
@@ -98,6 +103,14 @@ export interface ProjectContent {
 }
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+
+/** Empty business views keep creation controls reachable; they are never persisted as a document. */
+export function projectContentView(project: ProjectOpen | null, content: ProjectContent | null): ProjectContent | null {
+  if (content || !project) return content
+  const category = project.manifest.category
+  if (!['character', 'music', 'video', 'ai_short_drama'].includes(category)) return null
+  return parseProjectContent(JSON.stringify({ schema_version: 1, kind: 'project-content', category, [category]: category === 'ai_short_drama' ? { episodes: [] } : {} }), project)
+}
 
 /** Reads the central project-content document; never infers content from MD or filenames. */
 export function parseProjectContent(raw: string, project: ProjectOpen): ProjectContent {
@@ -116,10 +129,10 @@ export function parseProjectContent(raw: string, project: ProjectOpen): ProjectC
   const references = (value: unknown) => array(value, item => reference(item) || invalid())
   const fields = (value: unknown): Field[] => array(value, item => { const f = object(item); return { label: required(f.label), value: text(f.value) } })
   const unique = <T extends { key: string }>(items: T[]): T[] => new Set(items.map(i => i.key)).size === items.length ? items : invalid()
-  const details = (value: unknown): Detail[] => unique(array(value, item => {
+  const details = (value: unknown, musicGroup?: MusicGroup): Detail[] => unique(array(value, item => {
     const d = object(item), key = required(d.key)
     if (!/^[a-zA-Z0-9_-]+$/.test(key)) invalid()
-    return { key, title: required(d.title), overview: text(d.overview), fields: fields(d.fields), image_file_id: reference(d.image_file_id), reference_file_ids: references(d.reference_file_ids), result_file_ids: references(d.result_file_ids), file_ids: references(d.file_ids), prompt: text(d.prompt), lyrics: text(d.lyrics), duration_seconds: number(d.duration_seconds) }
+    return { key, title: required(d.title), overview: text(d.overview), fields: fields(d.fields), image_file_id: reference(d.image_file_id), reference_file_ids: references(d.reference_file_ids), result_file_ids: references(d.result_file_ids), file_ids: references(d.file_ids), prompt: text(d.prompt), lyrics: text(d.lyrics), duration_seconds: number(d.duration_seconds), ...(musicGroup && d.production !== undefined ? { production: parseMusicProduction(d.production, project, musicGroup) } : {}) }
   }))
   let json: unknown
   try { json = JSON.parse(raw) } catch { return invalid() }
@@ -128,11 +141,15 @@ export function parseProjectContent(raw: string, project: ProjectOpen): ProjectC
   const category = d.category as Category
   if (['character', 'music', 'video', 'ai_short_drama', 'creative_video'].some(key => key !== category && d[key] != null)) invalid()
   const result: ProjectContent = { schema_version: 1, kind: 'project-content', category, overview: text(d.overview), cover_file_id: reference(d.cover_file_id) }
+  result.cover_position = coverPosition(d.cover_position)
+  if (d.cover_placeholder !== undefined && typeof d.cover_placeholder !== 'boolean') invalid()
+  result.cover_placeholder = d.cover_placeholder === true
+  if (result.cover_placeholder && result.cover_file_id) invalid()
   const body = object(d[category])
   if (category === 'character') result.character = { name: text(body.name), portrait_file_id: reference(body.portrait_file_id), portrait_prompt: text(body.portrait_prompt), sheet_file_id: reference(body.sheet_file_id), sheet_prompt: text(body.sheet_prompt), fields: fields(body.fields), extensions: details(body.extensions) }
   if (category === 'music') {
     const voice = body.voice == null ? {} : object(body.voice)
-    result.music = { artist: text(body.artist), name: text(body.name), voice: { name: text(voice.name), description: text(voice.description), recordings: details(voice.recordings), models: details(voice.models) }, songs: details(body.songs), mvs: details(body.mvs) }
+    result.music = { artist: text(body.artist), name: text(body.name), voice: { name: text(voice.name), description: text(voice.description), recordings: details(voice.recordings), models: details(voice.models, 'voice') }, songs: details(body.songs, 'songs'), mvs: details(body.mvs, 'mvs') }
   }
   if (category === 'video') result.video = {
     duration_seconds: number(body.duration_seconds), aspect: text(body.aspect), output_file_id: reference(body.output_file_id), storyboards: details(body.storyboards),
@@ -274,9 +291,15 @@ export function parseProjectContent(raw: string, project: ProjectOpen): ProjectC
       if (!['script', 'character', 'wardrobe', 'prop', 'location', 'sound', 'music'].includes(String(g.kind))) invalid()
       if (review.state === 'approved' && !selected.length && !asset.asset_id) invalid()
       if (definition_review.state === 'approved' && !definition_refs.length) invalid()
+      let music_source: DramaGlobal['music_source'] = null
+      if (g.music_source != null) {
+        const s = recordObject(g.music_source, ['project_id', 'revision_id', 'song_key'])
+        if (g.kind !== 'music' || !uuid.test(String(s.project_id)) || !uuid.test(String(s.revision_id))) invalid()
+        music_source = { project_id: String(s.project_id), revision_id: String(s.revision_id), song_key: key(s.song_key) }
+      }
       const states = statesOf(g.states), versions = versionsOf(g.versions, 'global'), selected_versions = selectionsOf(g.selected_versions, versions, 'global')
       if (versions.some(v => !states.some(s => s.key === v.state_key))) invalid()
-      return { states, versions, selected_versions, key: key(g.key), kind: g.kind as DramaGlobal['kind'], name: required(g.name), description: text(g.description), file_ids: selected, reference_file_ids: references(g.reference_file_ids), review, definition_refs, definition_review, input_global_keys: keys(g.input_global_keys), generation_record_file_ids: references(g.generation_record_file_ids), ...asset }
+      return { states, versions, selected_versions, music_source, key: key(g.key), kind: g.kind as DramaGlobal['kind'], name: required(g.name), description: text(g.description), file_ids: selected, reference_file_ids: references(g.reference_file_ids), review, definition_refs, definition_review, input_global_keys: keys(g.input_global_keys), generation_record_file_ids: references(g.generation_record_file_ids), ...asset }
     }))
     const globalByKey = new Map(globals.map(g => [g.key, g]))
     if (globals.some(g => g.input_global_keys.some(k => k === g.key || !globalByKey.has(k)))) invalid()

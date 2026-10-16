@@ -142,10 +142,15 @@ func sameIDs(a any, b []string) bool {
 	return true
 }
 
-// ValidateDramaContent validates new short-drama writes. Older categories keep their
-// existing behavior. Files and record references are scoped to the supplied manifest.
+// ValidateDramaContent validates short-drama writes and opted-in music production
+// metadata. Legacy music without production metadata keeps its existing behavior.
+// Files and record references are scoped to the supplied manifest.
 // Human review truth and render quality are not inferred from client JSON.
 func ValidateDramaContent(data []byte, m Manifest) error {
+	if m.Category == "music" {
+		_, err := decodeMusicContent(data, m)
+		return err
+	}
 	_, err := decodeDramaContent(data, m)
 	return err
 }
@@ -672,6 +677,9 @@ func (s *Service) readDramaRevision(ctx context.Context, p Principal, m Manifest
 	return nil, nil
 }
 func (s *Service) checkDramaRevision(ctx context.Context, p Principal, m Manifest, base string, data []byte) error {
+	if m.Category == "music" {
+		return s.checkMusicRevision(ctx, p, m, base, data)
+	}
 	var current contentObject
 	var e error
 	if len(data) > 0 {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"mime"
 	"sort"
+	"time"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
@@ -29,6 +30,9 @@ func NewService(ctx context.Context, db *pgxpool.Pool, content Artifact, assets 
 	if err := migrations.Check(ctx, db); err != nil {
 		return nil, err
 	}
+	if err := migrations.CheckLifecycle(ctx, db); err != nil {
+		return nil, err
+	}
 	s := &Service{db: db, content: content, assets: assets, coord: coord, workers: make(chan struct{}, 8)}
 	return s, nil
 }
@@ -42,7 +46,7 @@ func role(ctx context.Context, q queryer, p Principal, projectID string) (string
 		return "", ErrForbidden
 	}
 	var value string
-	err := q.QueryRow(ctx, "SELECT role FROM studio.project_members WHERE organization_id=$1 AND project_id=$2 AND subject_id=$3", p.OrganizationID, projectID, p.SubjectID).Scan(&value)
+	err := q.QueryRow(ctx, "SELECT m.role FROM studio.project_members m JOIN studio.projects p USING(organization_id,project_id) WHERE m.organization_id=$1 AND m.project_id=$2 AND m.subject_id=$3 AND NOT p.deleted", p.OrganizationID, projectID, p.SubjectID).Scan(&value)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrForbidden
 	}
@@ -165,6 +169,9 @@ func (s *Service) Commit(ctx context.Context, p Principal, r CommitRequest) (Res
 	return s.commit(ctx, p, r, false)
 }
 func (s *Service) commit(ctx context.Context, p Principal, r CommitRequest, publication bool) (Result, error) {
+	return s.commitWithPreparation(ctx, p, r, publication, changed)
+}
+func (s *Service) commitWithPreparation(ctx context.Context, p Principal, r CommitRequest, publication bool, prepare func(Manifest, CommitRequest) (preparePlan, error)) (Result, error) {
 	if !ValidID(r.ProjectID) || !ValidID(r.ExpectedRevisionID) || !ValidID(r.CommitID) {
 		return Result{}, ErrInvalid
 	}
@@ -191,6 +198,12 @@ func (s *Service) commit(ctx context.Context, p Principal, r CommitRequest, publ
 	if e = advisory(ctx, tx, "commit:"+p.OrganizationID+":"+r.ProjectID+":"+r.CommitID); e != nil {
 		return Result{}, e
 	}
+	if e = lockActive(ctx, tx, p, r.ProjectID); e != nil {
+		return Result{}, e
+	}
+	if e = writable(ctx, tx, p, r.ProjectID); e != nil {
+		return Result{}, e
+	}
 	c, e := loadCommit(ctx, tx, p.OrganizationID, r.ProjectID, r.CommitID)
 	if e == nil {
 		if c.Actor != p.SubjectID {
@@ -210,7 +223,7 @@ func (s *Service) commit(ctx context.Context, p Principal, r CommitRequest, publ
 				plan, err = changedWithInlineLimit(previous, r, MaxManifestBytes)
 			}
 		} else {
-			plan, err = changed(previous, r)
+			plan, err = prepare(previous, r)
 		}
 		if err != nil {
 			return Result{}, err
@@ -334,7 +347,7 @@ func (s *Service) resume(ctx context.Context, p Principal, id, commit string) (R
 		return Result{}, errorCode(c.Error)
 	}
 	var head string
-	if e = s.db.QueryRow(ctx, "SELECT COALESCE(head_revision_id::text,'') FROM studio.projects WHERE organization_id=$1 AND project_id=$2", p.OrganizationID, id).Scan(&head); e != nil {
+	if e = s.db.QueryRow(ctx, "SELECT COALESCE(head_revision_id::text,'') FROM studio.projects WHERE organization_id=$1 AND project_id=$2 AND NOT deleted", p.OrganizationID, id).Scan(&head); e != nil {
 		return Result{}, e
 	}
 	if head != c.Expected {
@@ -534,7 +547,11 @@ func (s *Service) publish(ctx context.Context, p Principal, c commitRecord) (Res
 		return Result{}, e
 	}
 	var head string
-	e = tx.QueryRow(ctx, "SELECT COALESCE(head_revision_id::text,'') FROM studio.projects WHERE organization_id=$1 AND project_id=$2 FOR UPDATE", p.OrganizationID, c.ProjectID).Scan(&head)
+	var deleted bool
+	e = tx.QueryRow(ctx, "SELECT COALESCE(head_revision_id::text,''),deleted FROM studio.projects WHERE organization_id=$1 AND project_id=$2 FOR UPDATE", p.OrganizationID, c.ProjectID).Scan(&head, &deleted)
+	if e == nil && deleted {
+		return Result{}, ErrForbidden
+	}
 	if e != nil {
 		return Result{}, e
 	}
@@ -593,14 +610,16 @@ func (s *Service) Status(ctx context.Context, p Principal, id, commit string) (C
 	return status, nil
 }
 func (s *Service) Open(ctx context.Context, p Principal, id, selected string) (OpenResult, error) {
-	if _, e := role(ctx, s.db, p, id); e != nil {
+	member, e := role(ctx, s.db, p, id)
+	if e != nil {
 		return OpenResult{}, e
 	}
 	if selected != "" && !ValidID(selected) {
 		return OpenResult{}, ErrInvalid
 	}
 	var head string
-	e := s.db.QueryRow(ctx, "SELECT COALESCE(head_revision_id::text,'') FROM studio.projects WHERE organization_id=$1 AND project_id=$2", p.OrganizationID, id).Scan(&head)
+	var lifecycleVersion int64
+	e = s.db.QueryRow(ctx, "SELECT COALESCE(head_revision_id::text,''),lifecycle_version FROM studio.projects WHERE organization_id=$1 AND project_id=$2 AND NOT deleted", p.OrganizationID, id).Scan(&head, &lifecycleVersion)
 	if e != nil {
 		return OpenResult{}, e
 	}
@@ -627,10 +646,16 @@ func (s *Service) Open(ctx context.Context, p Principal, id, selected string) (O
 	if a != b {
 		return OpenResult{}, ErrNotReady
 	}
-	return OpenResult{Result: Result{ProjectID: id, RevisionID: selected, ManifestRef: ref, Manifest: m, Invalidated: []string{}}, HeadRevisionID: head}, nil
+	var parent string
+	var created time.Time
+	if e = s.db.QueryRow(ctx, "SELECT COALESCE(parent_revision_id::text,''),created_at FROM studio.project_revisions WHERE organization_id=$1 AND project_id=$2 AND revision_id=$3", p.OrganizationID, id, selected).Scan(&parent, &created); e != nil {
+		return OpenResult{}, e
+	}
+	return OpenResult{Result: Result{ProjectID: id, RevisionID: selected, ManifestRef: ref, Manifest: m, Invalidated: []string{}}, HeadRevisionID: head, ParentRevisionID: parent, CreatedAt: created.UTC(), CanWrite: member == "owner" || member == "editor", CanDelete: member == "owner", LifecycleVersion: lifecycleVersion}, nil
 }
 func (s *Service) List(ctx context.Context, p Principal, r ListRequest) (ListResult, error) {
 	out := ListResult{Items: []ListItem{}}
+	deleted := r.Deleted != nil && *r.Deleted
 	if !p.Valid() {
 		return out, ErrForbidden
 	}
@@ -640,17 +665,18 @@ func (s *Service) List(ctx context.Context, p Principal, r ListRequest) (ListRes
 	if r.Limit < 1 || r.Limit > 100 || (r.Cursor != "" && !ValidID(r.Cursor)) || (r.Category != "" && !tokenPattern.MatchString(r.Category)) {
 		return out, ErrInvalid
 	}
-	rows, e := s.db.Query(ctx, `SELECT p.project_id::text,p.head_revision_id::text,p.name,p.category,p.status,p.created_at FROM studio.projects p JOIN studio.project_members m USING(organization_id,project_id) WHERE p.organization_id=$1 AND m.subject_id=$2 AND p.head_revision_id IS NOT NULL AND ($3='' OR p.category=$3) AND ($4='' OR p.project_id>NULLIF($4,'')::uuid) AND (NOT $6 OR m.role IN ('owner','editor')) ORDER BY p.project_id LIMIT $5`, p.OrganizationID, p.SubjectID, r.Category, r.Cursor, r.Limit+1, r.RequireWrite)
+	rows, e := s.db.Query(ctx, `SELECT p.project_id::text,p.head_revision_id::text,p.name,p.category,p.status,p.created_at,r.created_at,m.role IN ('owner','editor') AND NOT p.deleted,m.role='owner',p.lifecycle_version FROM studio.projects p JOIN studio.project_members m USING(organization_id,project_id) JOIN studio.project_revisions r ON r.organization_id=p.organization_id AND r.project_id=p.project_id AND r.revision_id=p.head_revision_id WHERE p.organization_id=$1 AND m.subject_id=$2 AND p.head_revision_id IS NOT NULL AND p.deleted=$7 AND (NOT $7 OR m.role='owner') AND ($3='' OR p.category=$3) AND ($4='' OR p.project_id>NULLIF($4,'')::uuid) AND (NOT $6 OR m.role IN ('owner','editor')) ORDER BY p.project_id LIMIT $5`, p.OrganizationID, p.SubjectID, r.Category, r.Cursor, r.Limit+1, r.RequireWrite, deleted)
 	if e != nil {
 		return out, e
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var item ListItem
-		if e = rows.Scan(&item.ProjectID, &item.HeadRevisionID, &item.Name, &item.Category, &item.Status, &item.CreatedAt); e != nil {
+		if e = rows.Scan(&item.ProjectID, &item.HeadRevisionID, &item.Name, &item.Category, &item.Status, &item.CreatedAt, &item.UpdatedAt, &item.CanWrite, &item.CanDelete, &item.LifecycleVersion); e != nil {
 			return out, e
 		}
 		item.CreatedAt = item.CreatedAt.UTC()
+		item.UpdatedAt = item.UpdatedAt.UTC()
 		out.Items = append(out.Items, item)
 	}
 	if e = rows.Err(); e != nil {

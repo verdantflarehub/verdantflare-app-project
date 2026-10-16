@@ -81,5 +81,11 @@ func ApplyFresh(ctx context.Context, db *pgxpool.Pool, projectFence, worldFence 
 	if err = applyGate(ctx, tx); err != nil {
 		return err
 	}
+	if _, err = tx.Exec(ctx, "CREATE TABLE studio.project_extensions(name text PRIMARY KEY,checksum text NOT NULL);"+lifecycleSQL); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, "INSERT INTO studio.project_extensions VALUES('lifecycle',$1)", lifecycleDigest()); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
 }

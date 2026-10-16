@@ -94,7 +94,12 @@ type Result struct {
 }
 type OpenResult struct {
 	Result
-	HeadRevisionID string `json:"head_revision_id"`
+	HeadRevisionID   string    `json:"head_revision_id"`
+	ParentRevisionID string    `json:"parent_revision_id"`
+	CreatedAt        time.Time `json:"created_at"`
+	CanWrite         bool      `json:"can_write"`
+	CanDelete        bool      `json:"can_delete"`
+	LifecycleVersion int64     `json:"lifecycle_version"`
 }
 type CommitStatus struct {
 	State             string  `json:"state"`
@@ -104,18 +109,23 @@ type CommitStatus struct {
 	CurrentRevisionID string  `json:"current_revision_id,omitempty"`
 }
 type ListRequest struct {
+	Deleted      *bool  `json:"deleted,omitempty"`
 	RequireWrite bool   `json:"require_write,omitempty"`
 	Category     string `json:"category,omitempty"`
 	Cursor       string `json:"cursor,omitempty"`
 	Limit        int    `json:"limit,omitempty"`
 }
 type ListItem struct {
-	ProjectID      string    `json:"project_id"`
-	HeadRevisionID string    `json:"head_revision_id"`
-	Name           string    `json:"name"`
-	Category       string    `json:"category"`
-	Status         string    `json:"status"`
-	CreatedAt      time.Time `json:"created_at"`
+	ProjectID        string    `json:"project_id"`
+	HeadRevisionID   string    `json:"head_revision_id"`
+	Name             string    `json:"name"`
+	Category         string    `json:"category"`
+	Status           string    `json:"status"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	CanWrite         bool      `json:"can_write"`
+	CanDelete        bool      `json:"can_delete"`
+	LifecycleVersion int64     `json:"lifecycle_version"`
 }
 type ListResult struct {
 	Items      []ListItem `json:"items"`
