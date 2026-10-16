@@ -205,10 +205,12 @@ onBeforeUnmount(() => { closeEdit(); alive = false; request++; listRequest++; re
 
       <div v-if="project && editRecovery" class="revision-notice"><p>有一项原保存结果待确认，可在此固定修订继续查询和恢复。</p><button class="btn" :disabled="editLoading" @click="editCurrent('rename')">查询或恢复原保存</button></div>
       <template v-if="!projectID">
-        <div class="list-tools">
+        <div class="list-tools project-list-tools">
           <input :value="search" type="search" aria-label="搜索项目名称" placeholder="搜索项目名称" @input="router.replace(link({ q: ($event.target as HTMLInputElement).value || undefined, shown: undefined }))">
-          <select aria-label="项目排序" :value="sort" @change="router.replace(link({ sort: ($event.target as HTMLSelectElement).value, shown: undefined }))"><option value="updated">最近更新</option><option value="name">名称</option></select>
-          <span class="muted" role="status">{{ listLoading ? '正在读取完整项目目录…' : listReady ? '共 ' + filtered.length + ' 个项目' : '' }}</span>
+          <div class="list-summary">
+            <span class="muted" role="status">{{ listLoading ? '正在读取完整项目目录…' : listReady ? '共 ' + filtered.length + ' 个项目' : '' }}</span>
+            <label class="list-sort"><span class="muted">排序</span><select aria-label="项目排序" :value="sort" @change="router.replace(link({ sort: ($event.target as HTMLSelectElement).value, shown: undefined }))"><option value="updated">最近更新</option><option value="name">名称</option></select></label>
+          </div>
         </div>
         <div v-if="listError" class="state error" role="alert">{{ listError }}<button class="btn" @click="retry">重试</button></div>
         <div v-if="listLoading && !items.length" class="state" role="status">正在读取项目…</div>
@@ -296,6 +298,10 @@ onBeforeUnmount(() => { closeEdit(); alive = false; request++; listRequest++; re
 .business-tabs a { border: 1px solid transparent; padding: 7px 12px; border-radius: 8px; color: var(--muted); }
 .business-tabs a.active { color: var(--accent); background: var(--panel); border-color: var(--line); }
 .list-tools { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+.project-list-tools { justify-content: flex-start; }
+.list-summary { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 16px; margin-left: auto; max-width: 100%; }
+.list-summary > [role="status"] { white-space: nowrap; }
+.list-sort { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
 .list-tools .business-tabs { margin: 0; }
 input { width: 250px; max-width: 100%; padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--panel); }
 .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
