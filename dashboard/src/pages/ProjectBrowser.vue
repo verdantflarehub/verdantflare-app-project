@@ -82,14 +82,6 @@ const objectTitle = computed(() => query('file') ? project.value?.manifest.files
   : query('continuity') ? '连续性详情'
   : query('item') && activeTab.value?.key === 'cast' ? video.value?.cast.find(c => c.key === query('item'))?.name || '片中角色详情'
   : detail.value?.title)
-const previousPage = computed(() => {
-  void route.fullPath
-  const back = router.options.history.state.back
-  if (typeof back !== 'string' || !back.startsWith('/projects?')) return null
-  const previous = router.resolve(back)
-  return previous.query.project === projectID.value ? previous : null
-})
-
 const filtered = computed(() => selectProjects(items.value, search.value, sort.value))
 const shown = computed(() => filtered.value.slice(0, visibleCount.value))
 const displayTime = (time?: string) => time && Number.isFinite(Date.parse(time)) ? new Date(time).toLocaleString('zh-CN') : '更新时间未知'
@@ -233,7 +225,6 @@ onBeforeUnmount(() => { closeEdit(); alive = false; request++; listRequest++; re
       <template v-else-if="project && reader">
         <section v-if="historical" class="revision-notice" role="status"><div><strong>正在查看历史版本</strong><p>图片、制作版本及选用状态均为当时记录，后续同步的素材不会出现在此版本中。</p></div><RouterLink class="btn" :to="link({ revision: undefined, state: undefined, version: undefined, compare: undefined })">查看最新版本</RouterLink></section>
         <RouterLink v-if="musicReturnRoute(route.query.fromMusic)" class="btn" :to="musicReturnRoute(route.query.fromMusic)!">返回来源作品</RouterLink>
-        <div v-if="objectDetail && !(video && activeTab?.key === 'storyboards')" class="project-return"><button v-if="previousPage" class="btn" @click="router.back()">← 返回上一页</button><RouterLink class="btn" :to="link({ item: undefined, material: undefined, shot: undefined, scene: undefined, continuity: undefined, deliverable: undefined, file: undefined, fixed: undefined, run: undefined, reference: undefined, candidate: undefined, lighting: undefined, package: undefined, state: undefined, version: undefined, compare: undefined })">返回{{ activeTab?.label }}</RouterLink></div>
         <nav v-if="!objectDetail" class="business-tabs" aria-label="项目业务"><RouterLink v-for="tab in tabs" :key="tab.key" :class="{ active: activeTab?.key === tab.key }" :aria-current="activeTab?.key === tab.key ? 'page' : undefined" :to="menuLink(tab.key)">{{ tab.label }}</RouterLink></nav>
         <ProjectShared v-if="shared" :reader="reader" :tab="activeTab!.key" />
         <div v-else-if="!content" class="state">暂无业务内容。</div>
@@ -272,8 +263,6 @@ onBeforeUnmount(() => { closeEdit(); alive = false; request++; listRequest++; re
 </template>
 
 <style scoped>
-.project-return { display:flex; flex-wrap:wrap; gap:16px; align-items:center; margin:14px 0; }
-
 .drama-browser { line-height:1.55; }
 .drama-browser .business-tabs { gap: 20px; border-bottom: 1px solid var(--line); margin: 0 0 16px; }
 .drama-browser .business-tabs a { padding: 8px 0; border: 0; border-bottom: 2px solid transparent; border-radius: 0; font-size: 13px; background: transparent; }
