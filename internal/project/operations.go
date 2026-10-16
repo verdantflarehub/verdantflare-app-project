@@ -109,7 +109,7 @@ type CommitStatus struct {
 	CurrentRevisionID string  `json:"current_revision_id,omitempty"`
 }
 type ListRequest struct {
-	Deleted      bool   `json:"deleted,omitempty"`
+	Deleted      *bool  `json:"deleted,omitempty"`
 	RequireWrite bool   `json:"require_write,omitempty"`
 	Category     string `json:"category,omitempty"`
 	Cursor       string `json:"cursor,omitempty"`

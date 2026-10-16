@@ -652,6 +652,7 @@ func (s *Service) Open(ctx context.Context, p Principal, id, selected string) (O
 }
 func (s *Service) List(ctx context.Context, p Principal, r ListRequest) (ListResult, error) {
 	out := ListResult{Items: []ListItem{}}
+	deleted := r.Deleted != nil && *r.Deleted
 	if !p.Valid() {
 		return out, ErrForbidden
 	}
@@ -661,7 +662,7 @@ func (s *Service) List(ctx context.Context, p Principal, r ListRequest) (ListRes
 	if r.Limit < 1 || r.Limit > 100 || (r.Cursor != "" && !ValidID(r.Cursor)) || (r.Category != "" && !tokenPattern.MatchString(r.Category)) {
 		return out, ErrInvalid
 	}
-	rows, e := s.db.Query(ctx, `SELECT p.project_id::text,p.head_revision_id::text,p.name,p.category,p.status,p.created_at,r.created_at,m.role IN ('owner','editor') AND NOT p.deleted,m.role='owner',p.lifecycle_version FROM studio.projects p JOIN studio.project_members m USING(organization_id,project_id) JOIN studio.project_revisions r ON r.organization_id=p.organization_id AND r.project_id=p.project_id AND r.revision_id=p.head_revision_id WHERE p.organization_id=$1 AND m.subject_id=$2 AND p.head_revision_id IS NOT NULL AND p.deleted=$7 AND (NOT $7 OR m.role='owner') AND ($3='' OR p.category=$3) AND ($4='' OR p.project_id>NULLIF($4,'')::uuid) AND (NOT $6 OR m.role IN ('owner','editor')) ORDER BY p.project_id LIMIT $5`, p.OrganizationID, p.SubjectID, r.Category, r.Cursor, r.Limit+1, r.RequireWrite, r.Deleted)
+	rows, e := s.db.Query(ctx, `SELECT p.project_id::text,p.head_revision_id::text,p.name,p.category,p.status,p.created_at,r.created_at,m.role IN ('owner','editor') AND NOT p.deleted,m.role='owner',p.lifecycle_version FROM studio.projects p JOIN studio.project_members m USING(organization_id,project_id) JOIN studio.project_revisions r ON r.organization_id=p.organization_id AND r.project_id=p.project_id AND r.revision_id=p.head_revision_id WHERE p.organization_id=$1 AND m.subject_id=$2 AND p.head_revision_id IS NOT NULL AND p.deleted=$7 AND (NOT $7 OR m.role='owner') AND ($3='' OR p.category=$3) AND ($4='' OR p.project_id>NULLIF($4,'')::uuid) AND (NOT $6 OR m.role IN ('owner','editor')) ORDER BY p.project_id LIMIT $5`, p.OrganizationID, p.SubjectID, r.Category, r.Cursor, r.Limit+1, r.RequireWrite, deleted)
 	if e != nil {
 		return out, e
 	}
