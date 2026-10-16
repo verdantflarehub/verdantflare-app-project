@@ -187,6 +187,47 @@ const unsubscribe = appSDK.lifecycle.subscribe(event => {
   if (event === 'hidden') { editGeneration++; editingReader.value?.dispose(); editingReader.value = undefined; editLoading.value = false; request++; listRequest++; reader.value?.dispose(); reader.value = null; loading.value = false; listLoading.value = false }
   if (event === 'active') { if (projectID.value) void loadProject(); else void loadList() }
 })
+const isImeComposing = ref(false), activeCardIndex = ref(0)
+function onSearchKeydown(e: KeyboardEvent) {
+  if (e.isComposing || e.keyCode === 229) return
+}
+function onProjectSearchInput(e: Event) {
+  if (isImeComposing.value) return
+  void router.replace(link({ q: (e.target as HTMLInputElement).value || undefined, shown: undefined }))
+}
+function onProjectSearchCompositionEnd(e: CompositionEvent) {
+  isImeComposing.value = false
+  void router.replace(link({ q: (e.target as HTMLInputElement).value || undefined, shown: undefined }))
+}
+function onBusinessFindInput(e: Event) {
+  if (isImeComposing.value) return
+  void router.replace(link({ find: (e.target as HTMLInputElement).value || undefined }))
+}
+function onBusinessFindCompositionEnd(e: CompositionEvent) {
+  isImeComposing.value = false
+  void router.replace(link({ find: (e.target as HTMLInputElement).value || undefined }))
+}
+function onGridKeydown(e: KeyboardEvent) {
+  if (e.isComposing || e.keyCode === 229) return
+  if (!['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return
+  const grid = e.currentTarget as HTMLElement | null
+  if (!grid) return
+  const cards = Array.from(grid.querySelectorAll<HTMLElement>('.project-card'))
+  const current = (e.target as HTMLElement | null)?.closest<HTMLElement>('.project-card')
+  const idx = current ? cards.indexOf(current) : activeCardIndex.value
+  if (idx < 0 || !cards.length) return
+  e.preventDefault()
+  const cols = Math.max(1, getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length || 3)
+  let next = idx
+  if (e.key === 'ArrowRight') next = Math.min(cards.length - 1, idx + 1)
+  else if (e.key === 'ArrowLeft') next = Math.max(0, idx - 1)
+  else if (e.key === 'ArrowDown') next = Math.min(cards.length - 1, idx + cols)
+  else if (e.key === 'ArrowUp') next = Math.max(0, idx - cols)
+  else if (e.key === 'Home') next = 0
+  else if (e.key === 'End') next = cards.length - 1
+  activeCardIndex.value = next
+  cards[next]?.focus()
+}
 onBeforeUnmount(() => { closeEdit(); alive = false; request++; listRequest++; reader.value?.dispose(); unsubscribe(); stopContext() })
 </script>
 
@@ -205,28 +246,28 @@ onBeforeUnmount(() => { closeEdit(); alive = false; request++; listRequest++; re
       </nav>
       <ProjectLifecycleDialog ref="lifecycleDialog" @changed="lifecycleChanged" />
       <header class="heading">
-        <div class="heading-left"><h1>{{ projectID ? (objectTitle || project?.manifest.name || '项目') : listCategory.label }}</h1><p v-if="drama">{{ drama.episodes.length }} 集 · {{ drama.episodes.reduce((n, e) => n + e.scenes.reduce((n, s) => n + s.shots.length, 0), 0) }} 镜 · {{ activeTab?.label }}</p><p v-else-if="!projectID">{{ listCategory.description }}</p></div>
+        <div class="heading-left"><h1>{{ projectID ? (objectTitle || project?.manifest.name || '项目') : listCategory.label }}</h1><p v-if="drama" class="tabular-nums">{{ drama.episodes.length }} 集 · {{ drama.episodes.reduce((n, e) => n + e.scenes.reduce((n, s) => n + s.shots.length, 0), 0) }} 镜 · {{ activeTab?.label }}</p><p v-else-if="!projectID">{{ listCategory.description }}</p></div>
         <div class="reference-row"><button v-if="project?.can_delete && !historical" class="btn" @click="deleteCurrent">删除项目</button><button v-if="!projectID" class="btn primary" @click="creating = true">＋ 新建项目</button><button v-if="project?.can_write && !historical" class="btn" @click="editCurrent('rename')">重命名</button><button v-if="project?.can_write && !historical" class="btn" @click="editCurrent('cover')">修改封面</button><RouterLink v-if="project" class="btn" :to="{ path: '/workspace', query: { project: projectID } }">本机工作副本</RouterLink><button class="btn" :disabled="loading || listLoading" @click="retry">刷新</button></div>
       </header>
 
       <div v-if="project && editRecovery" class="revision-notice"><p>有一项原保存结果待确认，可在此固定修订继续查询和恢复。</p><button class="btn" :disabled="editLoading" @click="editCurrent('rename')">查询或恢复原保存</button></div>
       <template v-if="!projectID">
         <div class="list-tools project-list-tools">
-          <input :value="search" type="search" aria-label="搜索项目名称" placeholder="搜索项目名称" @input="router.replace(link({ q: ($event.target as HTMLInputElement).value || undefined, shown: undefined }))">
+          <input :value="search" type="search" aria-label="搜索项目名称" placeholder="搜索项目名称" @compositionstart="isImeComposing = true" @compositionend="onProjectSearchCompositionEnd" @keydown="onSearchKeydown" @input="onProjectSearchInput">
           <div class="list-summary"><label class="list-sort"><span class="muted">范围</span><select aria-label="项目范围" :value="deletedFilter ? 'deleted' : 'active'" @change="router.replace(link({ deleted: ($event.target as HTMLSelectElement).value === 'deleted' ? 'true' : undefined, shown: undefined }))"><option value="active">当前项目</option><option value="deleted">已删除项目</option></select></label>
-            <span class="muted" role="status">{{ listLoading ? '正在读取完整项目目录…' : listReady ? '共 ' + filtered.length + ' 个项目' : '' }}</span>
+            <span class="muted tabular-nums" role="status">{{ listLoading ? '正在读取完整项目目录…' : listReady ? '共 ' + filtered.length + ' 个项目' : '' }}</span>
             <label class="list-sort"><span class="muted">排序</span><select aria-label="项目排序" :value="sort" @change="router.replace(link({ sort: ($event.target as HTMLSelectElement).value, shown: undefined }))"><option value="updated">最近更新</option><option value="name">名称</option></select></label>
           </div>
         </div>
         <div v-if="listError" class="state error" role="alert">{{ listError }}<button class="btn" @click="retry">重试</button></div>
         <div v-if="listLoading && !items.length" class="state" role="status">正在读取项目…</div>
         <div v-else-if="!filtered.length && !listError && !listLoading" class="state">{{ search ? '没有匹配的项目。' : '暂无' + listCategory.label + '项目。' }}</div>
-        <div class="cards">
-          <article v-for="item in shown" :key="item.project_id" class="project-card-wrap"><div v-if="deletedFilter" class="project-card"><div class="card-text"><small>已删除</small><h2>{{ item.name }}</h2><button v-if="item.can_delete" class="btn" @click="lifecycleDialog?.open(item, 'restore')">恢复项目</button></div></div><RouterLink v-else :key="`${item.project_id}:${item.head_revision_id}`" class="project-card" :to="openProject(item)">
-            <ProjectCover :project="item" /><div class="card-text"><small>{{ categoryName(item.category) }}</small><h2 :title="item.name">{{ item.name }}</h2><small>更新于 {{ displayTime(item.updated_at) }}</small></div>
+        <div class="cards project-grid" data-roving-grid="true" @keydown="onGridKeydown">
+          <article v-for="(item, index) in shown" :key="item.project_id" class="project-card-wrap"><div v-if="deletedFilter" class="project-card roving-item" :tabindex="index === activeCardIndex ? 0 : -1"><div class="card-text"><small>已删除</small><h2>{{ item.name }}</h2><button v-if="item.can_delete" class="btn" @click="lifecycleDialog?.open(item, 'restore')">恢复项目</button></div></div><RouterLink v-else :key="`${item.project_id}:${item.head_revision_id}`" class="project-card roving-item" :tabindex="index === activeCardIndex ? 0 : -1" :to="openProject(item)" @focus="activeCardIndex = index">
+            <ProjectCover :project="item" /><div class="card-text"><small>{{ categoryName(item.category) }}</small><h2 :title="item.name">{{ item.name }}</h2><small class="tabular-nums">更新于 {{ displayTime(item.updated_at) }}</small></div>
           </RouterLink><details v-if="!deletedFilter && (item.can_write || item.can_delete)" class="card-menu"><summary :aria-label="item.name + ' 的操作'">···</summary><button v-if="item.can_write" :disabled="editLoading" @click="editProject(item, 'rename')">重命名</button><button v-if="item.can_write" :disabled="editLoading" @click="editProject(item, 'cover')">修改封面</button><button v-if="item.can_delete" @click="lifecycleDialog?.open(item, 'delete')">删除项目</button></details></article>
         </div>
-        <div v-if="filtered.length > visibleCount" class="more"><span>已显示 {{ shown.length }} / {{ filtered.length }} 个项目</span><button class="btn" :disabled="listLoading" @click="router.replace(link({ shown: String(visibleCount + 12) }))">加载更多</button></div>
+        <div v-if="filtered.length > visibleCount" class="more"><span class="tabular-nums">已显示 {{ shown.length }} / {{ filtered.length }} 个项目</span><button class="btn" :disabled="listLoading" @click="router.replace(link({ shown: String(visibleCount + 12) }))">加载更多</button></div>
       </template>
       <div v-else-if="loading" class="state" role="status">正在读取项目…</div>
       <div v-else-if="error" class="state error" role="alert">{{ error }}<button class="btn" @click="retry">重试</button></div>
@@ -241,7 +282,7 @@ onBeforeUnmount(() => { closeEdit(); alive = false; request++; listRequest++; re
         <div v-else-if="query('item') && !detail" class="state">当前项目修订中没有这项内容。</div>
         <MusicDetail v-else-if="detail && music && (activeTab?.key === 'voice' || activeTab?.key === 'songs' || activeTab?.key === 'mvs')" :key="project.revision_id + ':' + activeTab.key + ':' + detail.key" :reader="reader" :detail="detail" :group="activeTab.key" @saved="revision => { listCache.clear(); router.replace(link({ revision, version: undefined })) }" />
         <article v-else-if="detail" :key="`${project.revision_id}:${activeTab?.key}:${detail.key}`" class="sections">
-          <section class="panel"><h2>概述</h2><p class="prose">{{ value(detail.overview) }}</p><p v-if="detail.duration_seconds != null" class="muted">{{ duration(detail.duration_seconds) }}</p><dl v-if="detail.fields.length" class="fields"><template v-for="(field, i) in detail.fields" :key="i"><dt>{{ field.label }}</dt><dd>{{ value(field.value) }}</dd></template></dl></section>
+          <section class="panel"><h2>概述</h2><p class="prose">{{ value(detail.overview) }}</p><p v-if="detail.duration_seconds != null" class="muted tabular-nums">{{ duration(detail.duration_seconds) }}</p><dl v-if="detail.fields.length" class="fields"><template v-for="(field, i) in detail.fields" :key="i"><dt>{{ field.label }}</dt><dd>{{ value(field.value) }}</dd></template></dl></section>
           <section class="panel"><h2>参考图</h2><div v-if="detail.reference_file_ids.length" class="reference-row"><ProjectMedia v-for="(id, i) in detail.reference_file_ids" :key="`${id}:${i}`" :reader="reader" :file-id="id" kind="image" :label="`参考图 ${i + 1}`" /></div><p v-else class="muted">未添加图片</p><ProjectPrompt :text="detail.prompt" /></section>
           <section v-if="activeTab?.key === 'songs'" class="panel"><h2>歌词</h2><p class="prose">{{ value(detail.lyrics) }}</p></section>
           <section class="panel"><h2>{{ resultKind === 'image' ? '结果图' : resultKind === 'audio' ? '歌曲' : '结果视频' }}</h2><div class="sections"><ProjectMedia v-for="(id, i) in detail.result_file_ids" :key="`${id}:${i}`" :reader="reader" :file-id="id" :kind="resultKind" :label="`${detail.title} ${i + 1}`" /><ProjectMedia v-if="!detail.result_file_ids.length" :reader="reader" :kind="resultKind" :label="detail.title" /></div></section>
@@ -259,8 +300,8 @@ onBeforeUnmount(() => { closeEdit(); alive = false; request++; listRequest++; re
           </template>
           <template v-else>
             <p v-if="music" class="prose">{{ value(content.overview) }}</p>
-            <div class="list-tools"><input type="search" :value="query('find')" :aria-label="'搜索' + activeTab?.label" placeholder="搜索名称或概述" @input="router.replace(link({ find: ($event.target as HTMLInputElement).value || undefined }))"><button v-if="character && project.can_write && !historical && activeTab?.key === 'extensions'" class="btn" @click="editCurrent('extension')">新建扩展</button></div><div v-if="!visibleEntries.length" class="state">暂无{{ activeTab?.label }}内容。</div>
-            <MusicCards v-if="music && (activeTab?.key === 'songs' || activeTab?.key === 'mvs')" :reader="reader" :entries="visibleEntries" :group="activeTab.key" /><div v-else class="cards"><RouterLink v-for="(entry, index) in visibleEntries" :key="entry.key" class="project-card" :to="link({ tab: activeTab?.key, item: entry.key })"><ProjectMedia v-if="entry.image_file_id || activeTab?.key !== 'songs'" :reader="reader" :file-id="entry.image_file_id" kind="image" :label="entry.title" thumbnail /><div v-else class="song-glyph" aria-hidden="true">♫</div><div class="card-text"><small v-if="activeTab?.key === 'storyboards'">{{ String(index + 1).padStart(2, '0') }} · {{ duration(entry.duration_seconds) }}</small><h2>{{ entry.title }}</h2><p>{{ value(entry.overview) }}</p></div></RouterLink></div>
+            <div class="list-tools"><input type="search" :value="query('find')" :aria-label="'搜索' + activeTab?.label" placeholder="搜索名称或概述" @compositionstart="isImeComposing = true" @compositionend="onBusinessFindCompositionEnd" @keydown="onSearchKeydown" @input="onBusinessFindInput"><button v-if="character && project.can_write && !historical && activeTab?.key === 'extensions'" class="btn" @click="editCurrent('extension')">新建扩展</button></div><div v-if="!visibleEntries.length" class="state">暂无{{ activeTab?.label }}内容。</div>
+            <MusicCards v-if="music && (activeTab?.key === 'songs' || activeTab?.key === 'mvs')" :reader="reader" :entries="visibleEntries" :group="activeTab.key" /><div v-else class="cards project-grid" data-roving-grid="true" @keydown="onGridKeydown"><RouterLink v-for="(entry, index) in visibleEntries" :key="entry.key" class="project-card roving-item" :tabindex="index === activeCardIndex ? 0 : -1" :to="link({ tab: activeTab?.key, item: entry.key })" @focus="activeCardIndex = index"><ProjectMedia v-if="entry.image_file_id || activeTab?.key !== 'songs'" :reader="reader" :file-id="entry.image_file_id" kind="image" :label="entry.title" thumbnail /><div v-else class="song-glyph" aria-hidden="true">♫</div><div class="card-text"><small v-if="activeTab?.key === 'storyboards'" class="tabular-nums">{{ String(index + 1).padStart(2, '0') }} · {{ duration(entry.duration_seconds) }}</small><h2>{{ entry.title }}</h2><p>{{ value(entry.overview) }}</p></div></RouterLink></div>
           </template>
         </div>
       </template>
@@ -272,79 +313,90 @@ onBeforeUnmount(() => { closeEdit(); alive = false; request++; listRequest++; re
 
 <style scoped>
 .drama-browser { line-height:1.55; }
-.drama-browser .business-tabs { gap: 20px; border-bottom: 1px solid var(--line); margin: 0 0 16px; }
+.drama-browser .business-tabs { gap: 20px; border-bottom: 0.5px solid var(--vf-hairline-outer, var(--line)); margin: 0 0 16px; }
 .drama-browser .business-tabs a { padding: 8px 0; border: 0; border-bottom: 2px solid transparent; border-radius: 0; font-size: 13px; background: transparent; }
 .drama-browser .business-tabs a.active { background:transparent; color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
 .drama-browser :deep(a:focus-visible), .drama-browser :deep(button:focus-visible), .drama-browser :deep(input:focus-visible), .drama-browser :deep(select:focus-visible), .drama-browser :deep(textarea:focus-visible), .drama-browser :deep(summary:focus-visible) { outline:2px solid var(--accent); outline-offset:3px; }
 .drama-browser :deep(.btn:hover) { border-color:var(--accent); }
-.revision-notice { display:flex; align-items:center; justify-content:space-between; gap:16px; border-left:2px solid var(--accent); background:var(--shell-panel); padding:12px 16px; margin-bottom:22px; font-size:13px; }
+.revision-notice { display:flex; align-items:center; justify-content:space-between; gap:16px; border-left:2px solid var(--accent); background:var(--shell-panel); box-shadow:var(--vf-shadow-card); padding:12px 16px; margin-bottom:22px; font-size:13px; border-radius:8px; }
 .revision-notice p { color:var(--muted); font-size:12px; margin-top:5px; line-height:1.8; }
 .revision-notice .btn { flex-shrink:0; }
 @media(max-width:800px) { .drama-browser .business-tabs { gap:16px; }.revision-notice { flex-wrap:wrap; } }
 
-.project-browser { overflow-wrap: anywhere; }
-.create-dialog { position:fixed; inset:10vh 0 auto; margin:auto; width:min(640px, calc(100vw - 32px)); border:1px solid var(--line); border-radius:12px; color:var(--ink); background:var(--panel); padding:20px; z-index:20; max-height:90vh; overflow:auto; }
+.project-browser { overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.tabular-nums { font-variant-numeric: tabular-nums; }
+.create-dialog { position:fixed; inset:10vh 0 auto; margin:auto; width:min(640px, calc(100vw - 32px)); border:0.5px solid var(--vf-hairline-outer, var(--line)); border-radius:12px; color:var(--ink); background:var(--panel); box-shadow:var(--vf-shadow-card-hover); padding:20px; z-index:20; max-height:90vh; overflow:auto; }
 .create-dialog::backdrop { background:var(--aside); opacity:.85; }
 .project-card-wrap { position:relative; min-width:0; }
 .project-card-wrap .card-text { padding-right:62px; }
 .project-card-wrap .card-text h2 { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; min-height:2.8em; }
 .card-menu[open] { z-index:2; }
-.card-menu { position:absolute; right:14px; bottom:14px; border:1px solid var(--line); border-radius:8px; background:var(--panel); padding:2px 8px; }
+.card-menu { position:absolute; right:14px; bottom:14px; border:0.5px solid var(--vf-hairline-outer, var(--line)); border-radius:8px; background:var(--panel); box-shadow:var(--vf-shadow-card); padding:2px 8px; }
 .card-menu summary { cursor:pointer; list-style:none; font-size:18px; }
 .card-menu button { display:block; padding:8px 12px; font-size:12px; }
 .card-menu button:hover { color:var(--accent); }
 .dialog-close { float:right; }
-.list-tools select { border:1px solid var(--line); padding:9px; border-radius:8px; color:var(--ink); background:var(--panel); }
+.list-tools select { border:0.5px solid var(--vf-hairline-outer, var(--line)); padding:9px; border-radius:8px; color:var(--ink); background:var(--panel); box-shadow:var(--vf-shadow-card); }
 .eyebrow { color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .14em; }
 .breadcrumbs { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; font-size: 13px; color: var(--muted); }
 .breadcrumbs a:hover { color: var(--accent); }
 .breadcrumbs [aria-current] { color: var(--ink); }
 .heading { gap: 16px; }
 .business-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
-.business-tabs a { border: 1px solid transparent; padding: 7px 12px; border-radius: 8px; color: var(--muted); }
-.business-tabs a.active { color: var(--accent); background: var(--panel); border-color: var(--line); }
+.business-tabs a { border: 0.5px solid transparent; padding: 7px 12px; border-radius: 8px; color: var(--muted); transition: color 150ms var(--vf-ease-out, cubic-bezier(0.16, 1, 0.3, 1)), border-color 150ms var(--vf-ease-out, cubic-bezier(0.16, 1, 0.3, 1)); }
+.business-tabs a.active { color: var(--accent); background: var(--panel); border-color: var(--vf-hairline-outer, var(--line)); box-shadow: var(--vf-shadow-card); }
 .list-tools { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
 .project-list-tools { justify-content: flex-start; }
 .list-summary { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 16px; margin-left: auto; max-width: 100%; }
 .list-summary > [role="status"] { white-space: nowrap; }
 .list-sort { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
 .list-tools .business-tabs { margin: 0; }
-input { width: 250px; max-width: 100%; padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--panel); }
-.cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
-.project-card { display: block; min-width: 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--panel); }
-a.project-card:hover, .project-card:has(a:hover) { border-color: var(--accent); }
+input { width: 250px; max-width: 100%; padding: 10px 14px; border: 0.5px solid var(--vf-hairline-outer, var(--line)); border-radius: 8px; color: var(--ink); background: var(--panel); box-shadow: var(--vf-shadow-card); }
+.cards, .project-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.project-card, .revision-item, .asset-card {
+  display: block;
+  min-width: 0;
+  border: 0.5px solid var(--vf-hairline-outer, var(--line));
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--panel);
+  box-shadow: var(--vf-shadow-card);
+  transition: transform 220ms var(--vf-ease-spring, cubic-bezier(0.22, 1, 0.36, 1)), box-shadow 220ms var(--vf-ease-out, cubic-bezier(0.16, 1, 0.3, 1)), border-color 160ms var(--vf-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+a.project-card:hover, .project-card:has(a:hover) { border-color: var(--accent); box-shadow: var(--vf-shadow-card-hover); transform: translateY(-2px); }
+.project-card:focus-visible, .roving-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .card-text { padding: 18px; }
 .card-text h2 { font-size: 18px; margin: 4px 0 8px; }
 .card-text p { color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 small, .muted { color: var(--muted); }
 .song-glyph { aspect-ratio: 16 / 10; display: grid; place-items: center; font-size: 56px; line-height: 1; color: var(--accent); background: var(--subtle); }
 .sections { display: grid; gap: 16px; }
-.panel { padding: 20px; min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+.panel { padding: 20px; min-width: 0; background: var(--panel); border: 0.5px solid var(--vf-hairline-outer, var(--line)); border-radius: 12px; box-shadow: var(--vf-shadow-card); }
 .panel > h2 { font-size: 18px; margin-bottom: 16px; }
 .prose { white-space: pre-wrap; line-height: 1.8; }
 .character-basic { display: grid; grid-template-columns: minmax(180px, 280px) minmax(0, 1fr); gap: 28px; align-items: start; }
 .character-basic :deep(.image-open img) { aspect-ratio: 4 / 5; object-fit: cover; object-position: center top; }
 .fields { display: grid; grid-template-columns: minmax(80px, 140px) minmax(0, 1fr); }
-.fields dt, .fields dd { padding: 12px 10px; border-bottom: 1px solid var(--line); white-space: pre-wrap; }
+.fields dt, .fields dd { padding: 12px 10px; border-bottom: 0.5px solid var(--vf-hairline-outer, var(--line)); white-space: pre-wrap; }
 .fields dt { color: var(--muted); }
 .reference-row { display: flex; gap: 16px; overflow-x: auto; padding-bottom: 8px; }
 .reference-row > :deep(.project-media) { flex: 0 0 220px; }
 .reference-row :deep(.image-open img) { height: 240px; object-fit: cover; object-position: center top; }
-.voice-item + .voice-item { border-top: 1px solid var(--line); padding-top: 24px; margin-top: 24px; }
+.voice-item + .voice-item { border-top: 0.5px solid var(--vf-hairline-outer, var(--line)); padding-top: 24px; margin-top: 24px; }
 .voice-item h3, .voice-item .prose, .voice-item .fields { margin-bottom: 14px; }
 .voice-item :deep(.project-media) + :deep(.project-media) { margin-top: 14px; }
 .video-meta { margin: 8px 0 18px; }
 .drama-back { justify-self: start; }
 .drama-grid { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); gap: 24px; align-items: start; }
 .drama-episodes { display: grid; gap: 7px; }
-.drama-episodes a { display: grid; padding: 12px 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+.drama-episodes a { display: grid; padding: 12px 14px; border: 0.5px solid var(--vf-hairline-outer, var(--line)); border-radius: 6px; background: var(--panel); box-shadow: var(--vf-shadow-card); }
 .drama-episodes a.active { border-color: var(--accent); box-shadow: inset 3px 0 var(--accent); }
 .drama-episodes small { color: var(--muted); }
 .drama-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.drama-scene, .drama-continuity, .drama-run, .drama-delivery { border-top: 1px solid var(--line); padding: 18px 0; }
+.drama-scene, .drama-continuity, .drama-run, .drama-delivery { border-top: 0.5px solid var(--vf-hairline-outer, var(--line)); padding: 18px 0; }
 .drama-scene h3, .drama-continuity h3, .drama-delivery h3 { margin-bottom: 5px; }
 .drama-shots { display: grid; gap: 6px; margin-top: 12px; }
-.drama-shots a { display: grid; grid-template-columns: 95px minmax(0, 1fr) auto; gap: 12px; align-items: center; border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; background: var(--panel); }
+.drama-shots a { display: grid; grid-template-columns: 95px minmax(0, 1fr) auto; gap: 12px; align-items: center; border: 0.5px solid var(--vf-hairline-outer, var(--line)); border-radius: 6px; padding: 10px 12px; background: var(--panel); box-shadow: var(--vf-shadow-card); }
 .drama-shots a:hover { border-color: var(--accent); }
 .drama-detail { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(250px, .8fr); gap: 24px; align-items: start; }
 .drama-refs { display: flex; flex-wrap: wrap; gap: 7px; }
@@ -355,9 +407,9 @@ small, .muted { color: var(--muted); }
 .state { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 30px; border: 1px dashed var(--line); border-radius: 12px; color: var(--muted); margin-bottom: 20px; }
 .error { color: var(--danger); }
 .more { display: flex; justify-content: center; gap: 16px; align-items: center; margin-top: 24px; color: var(--muted); }
-@media (max-width: 1150px) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .character-basic { grid-template-columns: minmax(140px, 220px) minmax(0, 1fr); gap: 18px; } .drama-grid, .drama-detail { grid-template-columns: minmax(0, 1fr); } }
-@media (max-width: 700px) { .cards, .character-basic, .drama-delivery-files { grid-template-columns: minmax(0, 1fr); } .panel { padding: 17px; } .fields { grid-template-columns: 84px minmax(0, 1fr); } .business-tabs a { padding: 8px 10px; } .list-tools, input { width: 100%; } .reference-row > :deep(.project-media) { flex-basis: 190px; } .drama-shots a { grid-template-columns: 70px minmax(0, 1fr); } .drama-shots a .muted:last-child { grid-column: 2; } }
-.video-browser .business-tabs { gap:7px; border-bottom:1px solid var(--line); padding-bottom:8px; margin:0 0 16px; }
+@media (max-width: 1150px) { .cards, .project-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .character-basic { grid-template-columns: minmax(140px, 220px) minmax(0, 1fr); gap: 18px; } .drama-grid, .drama-detail { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 700px) { .cards, .project-grid, .character-basic, .drama-delivery-files { grid-template-columns: minmax(0, 1fr); } .panel { padding: 17px; } .fields { grid-template-columns: 84px minmax(0, 1fr); } .business-tabs a { padding: 8px 10px; } .list-tools, input { width: 100%; } .reference-row > :deep(.project-media) { flex-basis: 190px; } .drama-shots a { grid-template-columns: 70px minmax(0, 1fr); } .drama-shots a .muted:last-child { grid-column: 2; } }
+.video-browser .business-tabs { gap:7px; border-bottom:0.5px solid var(--vf-hairline-outer, var(--line)); padding-bottom:8px; margin:0 0 16px; }
 .video-browser .business-tabs a { padding:7px 12px; border:0; border-radius:8px; }
 .video-browser .business-tabs a.active { background:var(--paper); color:var(--button-ink); }
 </style>

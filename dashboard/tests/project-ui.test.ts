@@ -184,3 +184,25 @@ test('candidate details preserve review, fixed source and missing scope without 
   assert(fixed.includes(id(99))); assert.match(fixed, /候选使用另一固定修订/)
   assert.doesNotMatch(fixed, /候选制作版本|files\/10.md/)
 })
+
+test('interaction physics tokens, 48-bar 0.7 Gamma waveform, lightbox affine zoom and 4-column revision diff render cleanly', async () => {
+  const render = renderer(), reader = dramaReader()
+  reader.project.manifest.run_refs = [{ service_id: 'video', run_id: 'native-run' }] as never
+  const runsHtml = await render.render('components/ProjectShared.vue', { reader, tab: 'runs' })
+  assert.match(runsHtml, /MCP Token 即调用授权/)
+  const css = render.css()
+  for (const token of ['--vf-hairline-outer', '--vf-hairline-inner', '--vf-shadow-card', '--vf-shadow-card-hover', '--vf-ease-spring', '--vf-ease-out', '--vf-shimmer', 'tabular-nums']) {
+    assert(css.includes(token), `expected ${token} in compiled CSS`)
+  }
+  const audioHtml = await render.render('components/ProjectMedia.vue', { reader, fileId: id(10), kind: 'audio', label: '人声干声' })
+  assert.match(audioHtml, /data-gamma="0\.7"/)
+  assert.equal((audioHtml.match(/class="waveform-bar"/g) || []).length, 48)
+  const imageHtml = await render.render('components/ProjectMedia.vue', { reader, fileId: id(10), kind: 'image', label: '角色设定图' })
+  assert.match(imageHtml, /zoom-stage/); assert.match(imageHtml, /zoom-readout/); assert.match(imageHtml, /1:1/)
+  const parent = structuredClone(reader.project)
+  const current = structuredClone(reader.project)
+  current.revision_id = id(3); current.parent_revision_id = parent.revision_id
+  current.manifest.files[0].path = 'files/10-updated.md'
+  const diffHtml = await render.render('components/ProjectRevisionDetail.vue', { revision: current, parent, historyBusy: false })
+  assert.match(diffHtml, /diff-viewer/); assert.match(diffHtml, /diff-ln/); assert.match(diffHtml, /diff-sign/); assert.match(diffHtml, /diff-cell/)
+})

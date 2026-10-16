@@ -91,6 +91,10 @@ const initialContext = scope()
 const stopContext = appSDK.context.subscribe(context => {
   if (scope() !== initialContext) { copy.value = undefined; handle.value = ''; discardPreview(); error.value = '会话已变化，请重新打开项目工作副本。'; busy.value = false }
 })
+const isImeComposing = ref(false)
+function onMergeKeydown(e: KeyboardEvent) { if (e.isComposing || e.keyCode === 229) return }
+function onMergeInput() { if (!isImeComposing.value) mergeDirty.value = true }
+function onMergeCompositionEnd() { isImeComposing.value = false; mergeDirty.value = true }
 onBeforeUnmount(() => { alive = false; stopLifecycle(); stopContext(); client.dispose(); dashboardHost.setDirty(false) })
 </script>
 
@@ -108,7 +112,7 @@ onBeforeUnmount(() => { alive = false; stopLifecycle(); stopContext(); client.di
     <section v-if="!copy" class="panel empty"><h2>从 Studio 桌面应用连接本机目录</h2><p>新目录从项目当前修订建立副本，已有目录保留原修订和恢复记录。文件修改由你明确选择后保存。</p></section>
     <template v-else>
       <section class="panel">
-        <div class="revision"><span>本机基准修订</span><code>{{ copy.state.base_revision_id }}</code></div>
+        <div class="revision"><span>本机基准修订</span><code class="tabular-nums">{{ copy.state.base_revision_id }}</code></div>
         <p class="hint">请在本机编辑器修改下载的文件，再选择要保存的文件。缺失文件不会自动从项目删除。</p>
         <div class="actions">
           <button class="btn" :disabled="!canUse" @click="simple('status')">刷新状态</button>
@@ -131,13 +135,13 @@ onBeforeUnmount(() => { alive = false; stopLifecycle(); stopContext(); client.di
         <div class="actions"><button class="btn" :disabled="!canUse || mergeDirty" @click="simple('resume')">恢复原提交</button><button class="btn" :disabled="!canUse || mergeDirty" @click="simple('previewConflict')">预览提交冲突</button><button class="btn" :disabled="!canUse || !!preview" @click="simple('switchToHead')">切换到最新修订</button></div>
       </section>
       <section v-if="preview" class="panel">
-        <h2>处理已确认的提交冲突</h2><p class="hint">当前目标修订：<code>{{ preview.head_revision_id }}</code>。提交前将重新检查远端状态。</p>
+        <h2>处理已确认的提交冲突</h2><p class="hint">当前目标修订：<code class="tabular-nums">{{ preview.head_revision_id }}</code>。提交前将重新检查远端状态。</p>
         <div v-for="(file, position) in preview.files" :key="file.index" class="conflict-file">
           <label :for="`choice-${file.index}`">{{ file.pending.path }} · {{ file.remote_changed ? '远端已修改' : '远端未修改' }}</label>
           <select :id="`choice-${file.index}`" :value="choices[position]?.choice" :disabled="!canUse" @change="choose(file.index, ($event.target as HTMLSelectElement).value)">
             <option value="head">采用远端内容</option><option v-if="file.can_keep_pending" value="pending">保留本机提交</option><option v-if="file.can_keep_pending && file.pending.text !== undefined" value="text">编辑合并文本</option>
           </select>
-          <textarea v-if="choices[position]?.choice === 'text'" v-model="choices[position]!.text" :disabled="!canUse" :aria-label="`${file.pending.path} 合并文本`" rows="8" @input="mergeDirty = true" />
+          <textarea v-if="choices[position]?.choice === 'text'" v-model="choices[position]!.text" :disabled="!canUse" :aria-label="`${file.pending.path} 合并文本`" rows="8" @compositionstart="isImeComposing = true" @compositionend="onMergeCompositionEnd" @keydown="onMergeKeydown" @input="onMergeInput" />
         </div>
         <div class="actions"><button class="btn primary" :disabled="!canUse" @click="resolve">提交冲突处理</button><button class="btn" :disabled="!canUse" @click="discardPreview">取消本次冲突处理</button></div>
       </section>
@@ -146,14 +150,16 @@ onBeforeUnmount(() => { alive = false; stopLifecycle(); stopContext(); client.di
 </template>
 
 <style scoped>
+.local-copy { font-variant-numeric: tabular-nums; }
+.tabular-nums { font-variant-numeric: tabular-nums; }
 .breadcrumbs { display: flex; flex-wrap: wrap; gap: 10px; color: var(--muted); margin-bottom: 20px; }
 .eyebrow { font-size: 11px; letter-spacing: 2px; color: var(--accent); }
-.panel { padding: 24px; border: 1px solid var(--line); border-radius: 12px; background: var(--shell-panel); margin-bottom: 20px; min-width: 0; }
+.panel { padding: 24px; border: 0.5px solid var(--vf-hairline-outer, var(--line)); border-radius: 12px; background: var(--shell-panel); box-shadow: var(--vf-shadow-card); margin-bottom: 20px; min-width: 0; transition: box-shadow 220ms var(--vf-ease-out, cubic-bezier(0.16, 1, 0.3, 1)); }
 h2 { font-size: 17px; margin-bottom: 12px; }.empty p,.hint { color: var(--muted); }.hint { margin: 12px 0 18px; }
-.revision { display: flex; flex-wrap: wrap; gap: 12px; }.revision span { color: var(--muted); }code { overflow-wrap: anywhere; }
+.revision { display: flex; flex-wrap: wrap; gap: 12px; }.revision span { color: var(--muted); }code { overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }.inline-label { display: flex; gap: 8px; align-items: center; color: var(--muted); }
-select,textarea { color: var(--ink); background: var(--subtle); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; }
-.files { list-style: none; margin-top: 20px; }.files li { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 14px 0; border-top: 1px solid var(--line); }.files label { flex: 1; min-width: 180px; display: flex; align-items: center; gap: 12px; }.file-path { overflow-wrap: anywhere; }.file-state { font-size: 12px; color: var(--muted); }.file-state.changed { color: var(--amber); }
-.state { margin: 0 0 20px; padding: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; color: var(--muted); }.error { color: var(--danger); }
+select,textarea { color: var(--ink); background: var(--subtle); border: 0.5px solid var(--vf-hairline-outer, var(--line)); border-radius: 6px; padding: 6px 10px; }
+.files { list-style: none; margin-top: 20px; }.files li { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 14px 0; border-top: 0.5px solid var(--vf-hairline-outer, var(--line)); }.files label { flex: 1; min-width: 180px; display: flex; align-items: center; gap: 12px; }.file-path { overflow-wrap: anywhere; }.file-state { font-size: 12px; color: var(--muted); }.file-state.changed { color: var(--amber); }
+.state { margin: 0 0 20px; padding: 16px; background: var(--panel); border: 0.5px solid var(--vf-hairline-outer, var(--line)); border-radius: 8px; color: var(--muted); box-shadow: var(--vf-shadow-card); }.error { color: var(--danger); }
 .conflict-file { display: grid; gap: 12px; margin: 18px 0; }.conflict-file label { overflow-wrap: anywhere; }.conflict-file select { justify-self: start; }.conflict-file textarea { width: 100%; resize: vertical; }
 </style>

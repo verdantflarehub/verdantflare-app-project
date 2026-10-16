@@ -77,6 +77,16 @@ const stop = appSDK.lifecycle.subscribe(event => {
   if (event === 'active') { hidden = false; activeEpoch.value++; if (props.tab === 'revisions') void history() }
   if (event === 'dispose') { alive = false; generation++; fileGeneration++; revisions.value = []; fileInfo.value = undefined }
 })
+const isImeComposing = ref(false)
+function onFindKeydown(e: KeyboardEvent) { if (e.isComposing || e.keyCode === 229) return }
+function onFindInput(e: Event, router: { replace: (to: ReturnType<typeof link>) => unknown }) {
+  if (isImeComposing.value) return
+  router.replace(link({ find: (e.target as HTMLInputElement).value || undefined }))
+}
+function onFindCompositionEnd(e: CompositionEvent, router: { replace: (to: ReturnType<typeof link>) => unknown }) {
+  isImeComposing.value = false
+  router.replace(link({ find: (e.target as HTMLInputElement).value || undefined }))
+}
 onBeforeUnmount(() => { alive = false; generation++; fileGeneration++; stop() })
 </script>
 
@@ -84,27 +94,59 @@ onBeforeUnmount(() => { alive = false; generation++; fileGeneration++; stop() })
   <div class="shared-page">
     <p v-if="error" class="empty error" role="alert">{{ error }}<button v-if="tab === 'revisions'" class="btn" @click="history">重试</button></p>
     <template v-if="tab === 'files'">
-      <template v-if="q('file')"><section v-if="file" class="panel"><h2>{{ file.path }}</h2><p class="muted">{{ file.role || '未登记用途' }} · 固定内容版本 {{ file.content_ref.version_id }}</p><p v-if="fileBusy" class="muted" role="status">正在读取文件信息…</p><dl v-if="fileInfo"><dt>格式</dt><dd>{{ fileInfo.mime }}</dd><dt>大小</dt><dd>{{ fileInfo.size.toLocaleString('zh-CN') }} 字节</dd><dt>SHA-256</dt><dd>{{ fileInfo.sha256 }}</dd></dl><DramaDocument v-if="fileType(file.path) === 'document'" :reader="reader" :file-id="file.file_id" :title="file.path" initially-expanded /><ProjectMedia v-else :reader="reader" :file-id="file.file_id" :kind="kind(file.path)" :label="file.path" /><ProjectMedia v-if="kind(file.path) !== 'file' || fileType(file.path) === 'document'" :reader="reader" :file-id="file.file_id" kind="file" label="下载原文件" /></section><p v-else class="empty">文件不在当前项目修订中。</p></template>
-      <template v-else><header><h2>文件</h2><input type="search" :value="q('find')" placeholder="搜索文件路径" aria-label="搜索文件路径" @input="$router.replace(link({ find: ($event.target as HTMLInputElement).value || undefined }))"><select aria-label="按文件扩展类型筛选" :value="q('fileType')" @change="$router.replace(link({ fileType: ($event.target as HTMLSelectElement).value || undefined }))"><option value="">全部类型</option><option value="document">文档</option><option value="image">图片</option><option value="audio">音频</option><option value="video">视频</option><option value="file">其他文件</option></select></header><div class="rows"><RouterLink v-for="f in files" :key="f.file_id" :to="link({ file: f.file_id })"><strong>{{ f.path }}</strong><small>{{ f.role || '未登记用途' }}</small></RouterLink></div><p v-if="!files.length" class="empty">暂无匹配文件。</p></template>
+      <template v-if="q('file')"><section v-if="file" class="panel"><h2>{{ file.path }}</h2><p class="muted">{{ file.role || '未登记用途' }} · 固定内容版本 {{ file.content_ref.version_id }}</p><p v-if="fileBusy" class="muted" role="status">正在读取文件信息…</p><dl v-if="fileInfo"><dt>格式</dt><dd>{{ fileInfo.mime }}</dd><dt>大小</dt><dd class="tabular-nums">{{ fileInfo.size.toLocaleString('zh-CN') }} 字节</dd><dt>SHA-256</dt><dd class="tabular-nums">{{ fileInfo.sha256 }}</dd></dl><DramaDocument v-if="fileType(file.path) === 'document'" :reader="reader" :file-id="file.file_id" :title="file.path" initially-expanded /><ProjectMedia v-else :reader="reader" :file-id="file.file_id" :kind="kind(file.path)" :label="file.path" /><ProjectMedia v-if="kind(file.path) !== 'file' || fileType(file.path) === 'document'" :reader="reader" :file-id="file.file_id" kind="file" label="下载原文件" /></section><p v-else class="empty">文件不在当前项目修订中。</p></template>
+      <template v-else><header><h2>文件</h2><input type="search" :value="q('find')" placeholder="搜索文件路径" aria-label="搜索文件路径" @compositionstart="isImeComposing = true" @compositionend="onFindCompositionEnd($event, $router)" @keydown="onFindKeydown" @input="onFindInput($event, $router)"><select aria-label="按文件扩展类型筛选" :value="q('fileType')" @change="$router.replace(link({ fileType: ($event.target as HTMLSelectElement).value || undefined }))"><option value="">全部类型</option><option value="document">文档</option><option value="image">图片</option><option value="audio">音频</option><option value="video">视频</option><option value="file">其他文件</option></select></header><div class="rows"><RouterLink v-for="f in files" :key="f.file_id" class="asset-card" :to="link({ file: f.file_id })"><strong>{{ f.path }}</strong><small>{{ f.role || '未登记用途' }}</small></RouterLink></div><p v-if="!files.length" class="empty">暂无匹配文件。</p></template>
     </template>
     <template v-else-if="tab === 'revisions'">
       <p v-if="busy" class="muted" role="status">正在读取固定修订…</p>
       <ProjectRevisionDetail v-if="q('fixed') && currentRevision" :revision="currentRevision" :parent="parentRevision" :history-busy="busy" />
       <p v-else-if="q('fixed') && !busy" class="empty">当前目录未找到此修订。</p>
-      <div v-else class="rows"><RouterLink v-for="r in revisions" :key="r.revision_id" :to="link({ fixed: r.revision_id })"><strong>{{ time(r.created_at) }}{{ r.revision_id === project.head_revision_id ? ' · 最新修订' : '' }}</strong><small>{{ r.revision_id }}</small></RouterLink></div>
+      <div v-else class="rows"><RouterLink v-for="r in revisions" :key="r.revision_id" class="revision-item" :to="link({ fixed: r.revision_id })"><strong class="tabular-nums">{{ time(r.created_at) }}{{ r.revision_id === project.head_revision_id ? ' · 最新修订' : '' }}</strong><small class="tabular-nums">{{ r.revision_id }}</small></RouterLink></div>
     </template>
     <template v-else-if="tab === 'runs'">
-      <section v-if="q('run') && run" class="panel"><h2>原生运行</h2><dl><dt>服务</dt><dd>{{ run.service_id }}</dd><dt>运行</dt><dd>{{ run.run_id }}</dd><dt>状态</dt><dd>需由原生服务查询，项目引用不代表运行成功。</dd></dl><button v-if="nativeRun" class="btn" :disabled="openingRun" @click="openRun">{{ openingRun ? '正在打开原任务…' : '打开原任务查询与恢复' }}</button><p v-else class="muted">此服务尚未提供可识别的原生任务入口，请凭上述原任务 ID 查询。</p></section><p v-else-if="q('run')" class="empty">运行不在当前项目修订中。</p><template v-else><h2>运行</h2><div class="rows"><RouterLink v-for="r in runs" :key="`${r.service_id}:${r.run_id}`" :to="link({ run: `${r.service_id}:${r.run_id}` })"><strong>{{ r.service_id }}</strong><small>{{ r.run_id }}</small></RouterLink></div><p v-if="!runs.length" class="empty">暂无关联运行。</p></template>
+      <div class="mcp-status-strip"><span class="mcp-pill">MCP Token 即调用授权</span><span class="muted tabular-nums">关联运行 {{ runs.length }} 项</span></div>
+      <section v-if="q('run') && run" class="panel"><h2>原生运行</h2><dl><dt>服务</dt><dd>{{ run.service_id }}</dd><dt>运行</dt><dd class="tabular-nums">{{ run.run_id }}</dd><dt>状态</dt><dd>需由原生服务查询，项目引用不代表运行成功。</dd></dl><button v-if="nativeRun" class="btn" :disabled="openingRun" @click="openRun">{{ openingRun ? '正在打开原任务…' : '打开原任务查询与恢复' }}</button><p v-else class="muted">此服务尚未提供可识别的原生任务入口，请凭上述原任务 ID 查询。</p></section><p v-else-if="q('run')" class="empty">运行不在当前项目修订中。</p><template v-else><h2>运行</h2><div class="rows"><RouterLink v-for="r in runs" :key="`${r.service_id}:${r.run_id}`" class="revision-item" :to="link({ run: `${r.service_id}:${r.run_id}` })"><strong>{{ r.service_id }}</strong><small class="tabular-nums">{{ r.run_id }}</small></RouterLink></div><p v-if="!runs.length" class="empty">暂无关联运行。</p></template>
     </template>
     <template v-else-if="tab === 'references'">
       <ProjectSourceDetail v-if="source" :reader="reader" :source="source" />
-      <template v-else-if="q('reference') && reference"><section class="panel"><h2>固定资产引用</h2><dl><dt>来源类型</dt><dd>数字世界固定资产版本</dd><dt>用途</dt><dd>{{ reference.purpose }}</dd><dt>资产</dt><dd>{{ reference.asset_id }}</dd><dt>版本</dt><dd>{{ reference.asset_version_id }}</dd></dl><button class="btn" @click="openWorld">打开来源详情</button><h3>许可与适配</h3><p class="muted">本项目引用未保存源包预览、许可范围与期限。请在来源固定版本详情核对实际读取权限、源文件及使用限制。</p></section><section class="panel"><h2>本项目使用位置</h2><div class="rows"><RouterLink v-for="g in referenceMaterials" :key="g.key" :to="link({ reference: undefined, tab: g.kind, material: g.key })"><strong>{{ g.name }}</strong><small>{{ g.description || '查看本项目关联资料' }}</small></RouterLink><RouterLink v-for="c in referenceContinuity" :key="c.key" :to="link({ reference: undefined, tab: 'continuity', continuity: c.key })"><strong>{{ c.name }}</strong><small>{{ c.description || '查看连续性记录' }}</small></RouterLink></div><ul v-if="referenceUsages.length"><li v-for="u in referenceUsages" :key="u.key">{{ u.description || u.key }} · 集 {{ u.target.episode_key }}<template v-if="u.target.scene_key"> / 场 {{ u.target.scene_key }}</template><template v-if="u.target.shot_key"> / 镜 {{ u.target.shot_key }}</template></li></ul><p v-if="!referenceMaterials.length && !referenceContinuity.length" class="muted">当前固定修订未登记业务对象与此资产版本的使用位置映射。</p></section></template><p v-else-if="q('reference')" class="empty">资产引用不在当前修订中。</p>
+      <template v-else-if="q('reference') && reference"><section class="panel"><h2>固定资产引用</h2><dl><dt>来源类型</dt><dd>数字世界固定资产版本</dd><dt>用途</dt><dd>{{ reference.purpose }}</dd><dt>资产</dt><dd class="tabular-nums">{{ reference.asset_id }}</dd><dt>版本</dt><dd class="tabular-nums">{{ reference.asset_version_id }}</dd></dl><button class="btn" @click="openWorld">打开来源详情</button><h3>许可与适配</h3><p class="muted">本项目引用未保存源包预览、许可范围与期限。请在来源固定版本详情核对实际读取权限、源文件及使用限制。</p></section><section class="panel"><h2>本项目使用位置</h2><div class="rows"><RouterLink v-for="g in referenceMaterials" :key="g.key" class="asset-card" :to="link({ reference: undefined, tab: g.kind, material: g.key })"><strong>{{ g.name }}</strong><small>{{ g.description || '查看本项目关联资料' }}</small></RouterLink><RouterLink v-for="c in referenceContinuity" :key="c.key" class="asset-card" :to="link({ reference: undefined, tab: 'continuity', continuity: c.key })"><strong>{{ c.name }}</strong><small>{{ c.description || '查看连续性记录' }}</small></RouterLink></div><ul v-if="referenceUsages.length"><li v-for="u in referenceUsages" :key="u.key">{{ u.description || u.key }} · 集 {{ u.target.episode_key }}<template v-if="u.target.scene_key"> / 场 {{ u.target.scene_key }}</template><template v-if="u.target.shot_key"> / 镜 {{ u.target.shot_key }}</template></li></ul><p v-if="!referenceMaterials.length && !referenceContinuity.length" class="muted">当前固定修订未登记业务对象与此资产版本的使用位置映射。</p></section></template><p v-else-if="q('reference')" class="empty">资产引用不在当前修订中。</p>
       <template v-else-if="q('candidate')"><ProjectCandidateDetail v-if="candidate" :reader="reader" :candidate="candidate" /><p v-else class="empty">当前修订没有此入库候选。</p></template>
-      <template v-else><h2>资产引用</h2><h3>直接项目来源</h3><div class="rows"><RouterLink v-for="s in sources" :key="s.key" :to="link({ reference: s.key })"><strong>{{ s.name }} · {{ s.purpose }}</strong><small>{{ s.category === 'music' ? '音乐' : '角色' }}项目 · {{ s.revision_id }}</small></RouterLink></div><p v-if="!sources.length" class="muted">暂无直接项目来源。</p><h3>数字世界固定资产</h3><div class="rows"><RouterLink v-for="r in refs" :key="`${r.asset_id}:${r.asset_version_id}:${r.purpose}`" :to="link({ reference: `${r.asset_id}:${r.asset_version_id}:${r.purpose}` })"><strong>{{ r.purpose }}</strong><small>{{ r.asset_id }} · {{ r.asset_version_id }}</small></RouterLink></div><p v-if="!refs.length" class="empty">暂无固定资产引用。</p><h2>入库候选</h2><div class="rows"><RouterLink v-for="c in candidates" :key="c.key" :to="link({ candidate: c.key })"><strong>{{ c.name }}</strong><small>{{ c.description || '查看入库依据与状态' }}</small></RouterLink></div><p v-if="!candidates.length" class="empty">暂无入库候选。</p></template>
+      <template v-else><h2>资产引用</h2><h3>直接项目来源</h3><div class="rows"><RouterLink v-for="s in sources" :key="s.key" class="asset-card" :to="link({ reference: s.key })"><strong>{{ s.name }} · {{ s.purpose }}</strong><small class="tabular-nums">{{ s.category === 'music' ? '音乐' : '角色' }}项目 · {{ s.revision_id }}</small></RouterLink></div><p v-if="!sources.length" class="muted">暂无直接项目来源。</p><h3>数字世界固定资产</h3><div class="rows"><RouterLink v-for="r in refs" :key="`${r.asset_id}:${r.asset_version_id}:${r.purpose}`" class="asset-card" :to="link({ reference: `${r.asset_id}:${r.asset_version_id}:${r.purpose}` })"><strong>{{ r.purpose }}</strong><small class="tabular-nums">{{ r.asset_id }} · {{ r.asset_version_id }}</small></RouterLink></div><p v-if="!refs.length" class="empty">暂无固定资产引用。</p><h2>入库候选</h2><div class="rows"><RouterLink v-for="c in candidates" :key="c.key" class="asset-card" :to="link({ candidate: c.key })"><strong>{{ c.name }}</strong><small>{{ c.description || '查看入库依据与状态' }}</small></RouterLink></div><p v-if="!candidates.length" class="empty">暂无入库候选。</p></template>
     </template>
   </div>
 </template>
 
 <style scoped>
-.shared-page { display:grid; gap:20px; min-width:0; overflow-wrap:anywhere; }header { display:flex; align-items:center; gap:20px; flex-wrap:wrap; }h2 { font-size:18px; margin:0 0 12px; }.panel { padding:24px; border:1px solid var(--line); border-radius:12px; background:var(--shell-panel); min-width:0; }.muted,small,dt { color:var(--muted); }input,select { padding:10px 14px; border:1px solid var(--line); border-radius:8px; background:var(--panel); color:var(--ink); max-width:100%; }.rows { display:grid; gap:10px; }.rows a { display:grid; padding:16px 20px; gap:6px; border:1px solid var(--line); border-radius:10px; background:var(--shell-panel); }.rows a:hover { border-color:var(--accent); }.empty { padding:24px; border:1px dashed var(--line); border-radius:10px; color:var(--muted); }.error { color:var(--danger); }dl { display:grid; grid-template-columns:80px minmax(0,1fr); gap:12px; margin:20px 0; }
+.shared-page {
+  --vf-hairline-outer: rgba(21, 35, 30, 0.11);
+  --vf-hairline-inner: rgba(255, 255, 255, 0.78);
+  --vf-ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  --vf-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --vf-shadow-card: 0 0 0 0.5px var(--vf-hairline-outer), inset 0 0.5px 0 var(--vf-hairline-inner), 0 2px 6px rgba(21, 35, 30, 0.04), 0 10px 24px -8px rgba(21, 35, 30, 0.06);
+  --vf-shadow-card-hover: 0 0 0 0.5px rgba(8, 126, 96, 0.34), inset 0 0.5px 0 rgba(255, 255, 255, 0.92), 0 6px 16px -4px rgba(21, 35, 30, 0.08), 0 16px 32px -10px rgba(8, 126, 96, 0.1);
+  --vf-shimmer: linear-gradient(105deg, rgba(21, 35, 30, 0.04) 20%, rgba(8, 126, 96, 0.12) 48%, rgba(21, 35, 30, 0.04) 76%);
+  display:grid; gap:20px; min-width:0; overflow-wrap:anywhere; font-variant-numeric: tabular-nums;
+}
+header { display:flex; align-items:center; gap:20px; flex-wrap:wrap; }
+h2 { font-size:18px; margin:0 0 12px; }
+.panel, .project-card, .revision-item, .asset-card {
+  border:0.5px solid var(--vf-hairline-outer, var(--line));
+  border-radius:12px;
+  background:var(--shell-panel);
+  box-shadow:var(--vf-shadow-card);
+  min-width:0;
+  transition:transform 220ms var(--vf-ease-spring), box-shadow 220ms var(--vf-ease-out), border-color 160ms var(--vf-ease-out);
+}
+.panel { padding:24px; }
+.muted,small,dt { color:var(--muted); }
+.tabular-nums { font-variant-numeric: tabular-nums; }
+input,select { padding:10px 14px; border:0.5px solid var(--vf-hairline-outer, var(--line)); border-radius:8px; background:var(--panel); color:var(--ink); max-width:100%; }
+.rows { display:grid; gap:10px; }
+.rows a { display:grid; padding:16px 20px; gap:6px; border:0.5px solid var(--vf-hairline-outer, var(--line)); border-radius:10px; background:var(--shell-panel); box-shadow:var(--vf-shadow-card); transition:transform 220ms var(--vf-ease-spring), box-shadow 220ms var(--vf-ease-out), border-color 160ms var(--vf-ease-out); }
+.rows a:hover, .revision-item:hover, .asset-card:hover { border-color:var(--accent); box-shadow:var(--vf-shadow-card-hover); transform:translateY(-1.5px); }
+.mcp-status-strip { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:10px 14px; border:0.5px solid var(--vf-hairline-outer, var(--line)); border-radius:10px; background:var(--subtle); box-shadow:var(--vf-shadow-card); font-size:12px; }
+.mcp-pill { display:inline-flex; align-items:center; padding:2px 8px; border-radius:99px; border:0.5px solid var(--accent); color:var(--accent); font-size:11px; font-weight:600; }
+.empty { padding:24px; border:1px dashed var(--line); border-radius:10px; color:var(--muted); }
+.error { color:var(--danger); }
+dl { display:grid; grid-template-columns:80px minmax(0,1fr); gap:12px; margin:20px 0; }
 </style>
