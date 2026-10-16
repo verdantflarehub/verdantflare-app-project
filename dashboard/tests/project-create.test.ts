@@ -58,7 +58,7 @@ test('Create digest matches the Go contract including HTML, Chinese and line sep
   assert.equal(await createRequestHash(request), '788489772901d511a56df66cbc4c46f8034ce17212d027640604ee43f4952303')
 })
 test('all six original categories persist exact input before creating and only terminal state opens a new intent', async () => {
-  assert.deepEqual(createCategories.map(c => c.key), ['character', 'music', 'video', 'ai_short_drama', 'image', 'music-mv'])
+  assert.deepEqual(createCategories.map(c => c.key), ['character', 'music', 'video', 'ai_short_drama', 'creative_video', 'image', 'music-mv'])
   for (const category of createCategories) {
     const f = fixture(), c = createProjectCreator(f.sdk, f.storage)
     await c.begin({ ...input, category: category.key, name: ' 项目 ', entry_path: ' docs/review.txt ', entry_text: '  保留原文\n' })

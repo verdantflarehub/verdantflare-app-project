@@ -1,10 +1,10 @@
-export type Category = 'character' | 'music' | 'video' | 'ai_short_drama'
+export type Category = 'character' | 'music' | 'video' | 'ai_short_drama' | 'creative_video'
 export interface ContentRef { store_id: string; artifact_id: string; version_id: string }
 export interface ProjectItem { project_id: string; head_revision_id: string; name: string; category: string }
 export interface ProjectFile { file_id: string; path: string; role?: string; content_ref: ContentRef }
 export interface ProjectOpen {
   project_id: string; revision_id: string
-  manifest: { name: string; category: string; files: ProjectFile[]; domain_documents: { document_type: string; file_id: string }[]; run_refs?: RunRef[]; asset_refs?: AssetRef[] }
+  manifest: { name: string; category: string; files: ProjectFile[]; domain_documents: { document_type: string; file_id: string }[]; run_refs?: RunRef[]; asset_refs?: AssetRef[]; selections?: { purpose: string; file_ids: string[] }[] }
 }
 export interface RunRef { service_id: string; run_id: string }
 export interface AssetRef { asset_id: string; asset_version_id: string; purpose: string }
@@ -71,12 +71,30 @@ export interface DramaShot {
 export interface DramaScene { key: string; title: string; overview: string | null; definition_refs: DefinitionRef[]; shots: DramaShot[] }
 export interface DramaEpisode { key: string; title: string; overview: string | null; script_key: string | null; script_file_id: string | null; output_file_id: string | null; edit_file_id: string | null; scenes: DramaScene[] }
 export interface DramaContinuity { key: string; name: string; kind: 'character' | 'wardrobe' | 'location' | 'prop' | 'voice' | 'general'; description: string | null; reference_file_ids: string[]; definition_refs: DefinitionRef[]; global_keys: string[]; asset_id: string | null; asset_version_id: string | null }
+export type CreativeMusicSource =
+  | { kind: 'project_file'; project_id: string; revision_id: string; file_id: string; content_ref: ContentRef; selection_purpose?: string }
+  | { kind: 'world_asset'; asset_id: string; asset_version_id: string; file_id: string }
+export interface CreativeVideoContent {
+  direction: 'promo' | 'advertisement' | 'brand_film' | 'music_video'
+  brief: { key: string; file_id: string | null; goal: string; client: string | null; audience: string | null; message: string | null; action: string | null }
+  music_source: CreativeMusicSource | null
+  rights: { key: string; subject_kind: string; subject_key: string; status: string; evidence_file_id: string | null }[]
+  concepts: { key: string; file_id: string | null; status: string }[]; selected_concept_key: string | null
+  sequences: { key: string; label: string | null; shot_keys: string[] }[]
+  shots: { key: string; planned_frames: number; script_file_id: string | null; storyboard_file_id: string | null; take_keys: string[] }[]
+  takes: { key: string; shot_key: string; file_id: string | null; status: string }[]
+  edits: { key: string; parent_key: string | null; project_file_id: string | null; music_source: CreativeMusicSource | null; state: string | null; items: { take_key: string; timeline_in_frame: number; source_in_frame: number; source_out_frame: number }[] }[]
+  delivery_variants: { key: string; edit_key: string | null; channel: string; territory: string; width: number; height: number; target_frames: number; language: string }[]
+  reviews: { key: string; target_kind: string; target_key: string; kind: string; state: string; record_file_id: string | null }[]
+  packages: { key: string; variant_key: string; edit_key: string; media_file_id: string; state: string; review_keys: string[] }[]
+}
 export interface ProjectContent {
   schema_version: 1; kind: 'project-content'; category: Category; overview: string | null; cover_file_id: string | null
   character?: { name: string | null; portrait_file_id: string | null; portrait_prompt: string | null; sheet_file_id: string | null; sheet_prompt: string | null; fields: Field[]; extensions: Detail[] }
   music?: { artist: string | null; name: string | null; voice: { name: string | null; description: string | null; recordings: Detail[]; models: Detail[] }; songs: Detail[]; mvs: Detail[] }
   video?: { duration_seconds: number | null; aspect: string | null; output_file_id: string | null; storyboards: Detail[]; cast: Cast[] }
   ai_short_drama?: { script_file_id: string | null; aspect: string | null; globals: DramaGlobal[]; usages: DramaUsage[]; deliverables: DramaDeliverable[]; world_candidates: DramaWorldCandidate[]; continuity: DramaContinuity[]; episodes: DramaEpisode[] }
+  creative_video?: CreativeVideoContent
 }
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
@@ -106,9 +124,9 @@ export function parseProjectContent(raw: string, project: ProjectOpen): ProjectC
   let json: unknown
   try { json = JSON.parse(raw) } catch { return invalid() }
   const d = object(json)
-  if (d.schema_version !== 1 || d.kind !== 'project-content' || !['character', 'music', 'video', 'ai_short_drama'].includes(String(d.category)) || d.category !== project.manifest.category) invalid()
+  if (d.schema_version !== 1 || d.kind !== 'project-content' || !['character', 'music', 'video', 'ai_short_drama', 'creative_video'].includes(String(d.category)) || d.category !== project.manifest.category) invalid()
   const category = d.category as Category
-  if (['character', 'music', 'video', 'ai_short_drama'].some(key => key !== category && d[key] != null)) invalid()
+  if (['character', 'music', 'video', 'ai_short_drama', 'creative_video'].some(key => key !== category && d[key] != null)) invalid()
   const result: ProjectContent = { schema_version: 1, kind: 'project-content', category, overview: text(d.overview), cover_file_id: reference(d.cover_file_id) }
   const body = object(d[category])
   if (category === 'character') result.character = { name: text(body.name), portrait_file_id: reference(body.portrait_file_id), portrait_prompt: text(body.portrait_prompt), sheet_file_id: reference(body.sheet_file_id), sheet_prompt: text(body.sheet_prompt), fields: fields(body.fields), extensions: details(body.extensions) }
@@ -124,6 +142,42 @@ export function parseProjectContent(raw: string, project: ProjectOpen): ProjectC
       if ((projectID === null) !== (revisionID === null) || (projectID && (!uuid.test(projectID) || !uuid.test(revisionID!)))) invalid()
       return { key: required(c.key), name: required(c.name), role: c.role as Cast['role'], portrait_file_id: reference(c.portrait_file_id), project_id: projectID, revision_id: revisionID }
     }))
+  }
+  if (category === 'creative_video') {
+    const b = object(body.brief)
+    const keys = (value: unknown) => array(value, item => required(item))
+    const musicSourceOf = (value: unknown): CreativeMusicSource | null => {
+      const source = value == null ? null : object(value)
+      if (!source) return null
+      if (source.kind === 'project_file') {
+      const ids = [source.project_id, source.revision_id, source.file_id]
+      const r = object(source.content_ref)
+      if (!ids.every(x => typeof x === 'string' && uuid.test(x)) || ![r.store_id, r.artifact_id, r.version_id].every(x => typeof x === 'string' && uuid.test(x))) invalid()
+      if (source.selection_purpose !== undefined && (typeof source.selection_purpose !== 'string' || !source.selection_purpose.trim() || source.selection_purpose.length > 256)) invalid()
+      return { kind: 'project_file', project_id: ids[0] as string, revision_id: ids[1] as string, file_id: ids[2] as string, content_ref: { store_id: r.store_id as string, artifact_id: r.artifact_id as string, version_id: r.version_id as string }, ...(source.selection_purpose ? { selection_purpose: source.selection_purpose as string } : {}) }
+      }
+      if (source.kind === 'world_asset') {
+      if (![source.asset_id, source.asset_version_id, source.file_id].every(x => typeof x === 'string' && uuid.test(x))) invalid()
+      return { kind: 'world_asset', asset_id: source.asset_id as string, asset_version_id: source.asset_version_id as string, file_id: source.file_id as string }
+      }
+      return invalid()
+    }
+    if (!['promo', 'advertisement', 'brand_film', 'music_video'].includes(String(body.direction))) invalid()
+    result.creative_video = {
+      direction: body.direction as CreativeVideoContent['direction'],
+      brief: { key: required(b.key), file_id: reference(b.file_id), goal: required(b.goal), client: text(b.client), audience: text(b.audience), message: text(b.message), action: text(b.action) },
+      music_source: musicSourceOf(body.music_source),
+      rights: array(body.rights, item => { const v = object(item); return { key: required(v.key), subject_kind: required(v.subject_kind), subject_key: required(v.subject_key), status: required(v.status), evidence_file_id: reference(v.evidence_file_id) } }),
+      concepts: array(body.concepts, item => { const v = object(item); return { key: required(v.key), file_id: reference(v.file_id), status: required(v.status) } }),
+      selected_concept_key: text(body.selected_concept_key),
+      sequences: array(body.sequences, item => { const v = object(item); return { key: required(v.key), label: text(v.label), shot_keys: keys(v.shot_keys) } }),
+      shots: array(body.shots, item => { const v = object(item); return { key: required(v.key), planned_frames: number(v.planned_frames) || 0, script_file_id: reference(v.script_file_id), storyboard_file_id: reference(v.storyboard_file_id), take_keys: keys(v.take_keys) } }),
+      takes: array(body.takes, item => { const v = object(item); return { key: required(v.key), shot_key: required(v.shot_key), file_id: reference(v.file_id), status: required(v.status) } }),
+      edits: array(body.edits, item => { const v = object(item); return { key: required(v.key), parent_key: text(v.parent_key), project_file_id: reference(v.project_file_id), music_source: musicSourceOf(v.music_source), state: text(v.state), items: array(v.items, entry => { const e = object(entry); return { take_key: required(e.take_key), timeline_in_frame: number(e.timeline_in_frame) || 0, source_in_frame: number(e.source_in_frame) || 0, source_out_frame: number(e.source_out_frame) || 0 } }) } }),
+      delivery_variants: array(body.delivery_variants, item => { const v = object(item); return { key: required(v.key), edit_key: text(v.edit_key), channel: required(v.channel), territory: required(v.territory), width: number(v.width) || 0, height: number(v.height) || 0, target_frames: number(v.target_frames) || 0, language: required(v.language) } }),
+      reviews: array(body.reviews, item => { const v = object(item); return { key: required(v.key), target_kind: required(v.target_kind), target_key: required(v.target_key), kind: required(v.kind), state: required(v.state), record_file_id: reference(v.record_file_id) } }),
+      packages: array(body.packages, item => { const v = object(item); return { key: required(v.key), variant_key: required(v.variant_key), edit_key: required(v.edit_key), media_file_id: reference(v.media_file_id) || invalid(), state: required(v.state), review_keys: keys(v.review_keys) } }),
+    }
   }
   if (category === 'ai_short_drama') {
     const key = (value: unknown) => { const k = required(value); if (!/^[a-zA-Z0-9_-]+$/.test(k)) invalid(); return k }

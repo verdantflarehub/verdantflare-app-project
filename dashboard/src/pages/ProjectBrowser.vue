@@ -9,13 +9,15 @@ import ProjectPrompt from '../components/ProjectPrompt.vue'
 import ProjectCover from '../components/ProjectCover.vue'
 import { useHost } from '../platform/host'
 import ShortDramaProject from '../components/drama/ShortDramaProject.vue'
+import CreativeVideoProject from '../components/creative/CreativeVideoProject.vue'
+import CreativeVideoEditor from '../components/creative/CreativeVideoEditor.vue'
 
 const route = useRoute(), router = useRouter()
 const { appSDK, dashboardHost } = useHost()
 const query = (key: string) => typeof route.query[key] === 'string' ? route.query[key] as string : ''
 const projectID = computed(() => query('project')), revisionID = computed(() => query('revision'))
 const filter = computed(() => query('category')), search = computed(() => query('q'))
-const categories = [{ key: '', label: '全部项目' }, { key: 'character', label: '角色设计' }, { key: 'music', label: '音乐制作' }, { key: 'video', label: '短视频制作' }, { key: 'ai_short_drama', label: 'AI短剧' }]
+const categories = [{ key: '', label: '全部项目' }, { key: 'character', label: '角色设计' }, { key: 'music', label: '音乐制作' }, { key: 'video', label: '短视频制作' }, { key: 'ai_short_drama', label: 'AI短剧' }, { key: 'creative_video', label: '创意视频制作' }]
 const categoryName = (key: string) => categories.find(c => c.key === key)?.label || '项目'
 const reader = shallowRef<ProjectReader | null>(null), loading = ref(false), error = ref('')
 const navigationError = ref('')
@@ -23,13 +25,14 @@ let navigationRequest: AbortController | undefined
 const items = ref<ProjectItem[]>([]), cursor = ref(''), listLoading = ref(false), listError = ref(''), listReady = ref(false)
 let request = 0, listRequest = 0, alive = true, signedOut = false
 const project = computed(() => reader.value?.project), content = computed(() => reader.value?.content)
-const character = computed(() => content.value?.character), music = computed(() => content.value?.music), video = computed(() => content.value?.video), drama = computed(() => content.value?.ai_short_drama)
+const character = computed(() => content.value?.character), music = computed(() => content.value?.music), video = computed(() => content.value?.video), drama = computed(() => content.value?.ai_short_drama), creative = computed(() => content.value?.creative_video)
 const tabs = computed(() => project.value?.manifest.category === 'character'
   ? [{ key: 'setting', label: '角色设定' }, { key: 'extensions', label: '角色扩展' }]
   : project.value?.manifest.category === 'music'
     ? [{ key: 'voice', label: '人声训练' }, { key: 'songs', label: '歌曲创作' }, { key: 'mvs', label: 'MV创作' }]
     : project.value?.manifest.category === 'video' ? [{ key: 'storyboards', label: '故事板' }, { key: 'cast', label: '角色创作' }]
-      : project.value?.manifest.category === 'ai_short_drama' ? [{ key: 'overview', label: '概览' }, { key: 'script', label: '剧本与设定' }, { key: 'materials', label: '素材设定' }, { key: 'production', label: '镜头制作' }, { key: 'delivery', label: '成果与交付' }] : [])
+      : project.value?.manifest.category === 'ai_short_drama' ? [{ key: 'overview', label: '概览' }, { key: 'script', label: '剧本与设定' }, { key: 'materials', label: '素材设定' }, { key: 'production', label: '镜头制作' }, { key: 'delivery', label: '成果与交付' }]
+        : project.value?.manifest.category === 'creative_video' ? [{ key: 'overview', label: '概览' }, { key: 'brief', label: '任务书' }, { key: 'story', label: '创意与分镜' }, { key: 'shots', label: '镜头素材' }, { key: 'edit', label: '剪辑版本' }, { key: 'delivery', label: '交付与审核' }] : [])
 const activeTab = computed(() => tabs.value.find(t => t.key === (({ episodes: 'script', continuity: 'script', tasks: 'production' } as Record<string, string>)[query('tab')] || query('tab'))) || tabs.value[0])
 const dramaEpisode = computed(() => query('episode') ? drama.value?.episodes.find(ep => ep.key === query('episode')) : drama.value?.episodes[0])
 const dramaScene = computed(() => dramaEpisode.value?.scenes.find(scene => scene.key === query('scene')))
@@ -50,8 +53,8 @@ const fromProject = computed(() => isProjectID(query('from')) && isProjectID(que
 const value = (text?: string | null) => text?.trim() ? text : '未填写'
 const duration = (seconds?: number | null) => seconds == null ? '时长未填写' : `${seconds} 秒`
 function link(change: Record<string, string | undefined>) { return { path: '/projects', query: { ...route.query, ...change } } }
-const listLink = computed(() => link({ project: undefined, revision: undefined, tab: undefined, item: undefined, episode: undefined, scene: undefined, shot: undefined, from: undefined, fromRevision: undefined, fromName: undefined, material: undefined, state: undefined, version: undefined, compare: undefined, deliverable: undefined, kind: undefined, find: undefined, status: undefined, view: undefined, purpose: undefined, segment: undefined, continuity: undefined }))
-function openProject(item: ProjectItem) { return link({ project: item.project_id, revision: item.head_revision_id, tab: undefined, item: undefined, episode: undefined, scene: undefined, shot: undefined, material: undefined, state: undefined, version: undefined, compare: undefined, deliverable: undefined, kind: undefined, find: undefined, status: undefined, view: undefined, purpose: undefined, segment: undefined, continuity: undefined }) }
+const listLink = computed(() => link({ project: undefined, revision: undefined, tab: undefined, item: undefined, episode: undefined, scene: undefined, shot: undefined, edit: undefined, variant: undefined, package: undefined, from: undefined, fromRevision: undefined, fromName: undefined, material: undefined, state: undefined, version: undefined, compare: undefined, deliverable: undefined, kind: undefined, find: undefined, status: undefined, view: undefined, purpose: undefined, segment: undefined, continuity: undefined }))
+function openProject(item: ProjectItem) { return link({ project: item.project_id, revision: item.head_revision_id, tab: undefined, item: undefined, episode: undefined, scene: undefined, shot: undefined, edit: undefined, variant: undefined, package: undefined, material: undefined, state: undefined, version: undefined, compare: undefined, deliverable: undefined, kind: undefined, find: undefined, status: undefined, view: undefined, purpose: undefined, segment: undefined, continuity: undefined }) }
 function castLink(cast: Cast) { return link({ project: cast.project_id!, revision: cast.revision_id!, tab: 'setting', item: undefined, from: project.value!.project_id, fromRevision: project.value!.revision_id, fromName: project.value!.manifest.name }) }
 async function openWorld(ref: AssetReference) {
   navigationRequest?.abort(); const controller = new AbortController(); navigationRequest = controller; navigationError.value = ''
@@ -119,6 +122,7 @@ function logout() {
   error.value = '当前会话已退出，请登录后刷新。'; listError.value = error.value
 }
 function retry() { signedOut = false; if (projectID.value) void loadProject(); else void loadList() }
+function creativeSaved(revision: string) { void router.replace(link({ revision, tab: query('tab') || 'brief' })) }
 watch([projectID, revisionID], () => void loadProject(), { immediate: true })
 watch(filter, () => { listReady.value = false; if (!projectID.value) void loadList() })
 watch(() => route.fullPath, () => { if (!loading.value && !listLoading.value) void restoreScroll() })
@@ -146,7 +150,7 @@ onBeforeUnmount(() => { alive = false; request++; listRequest++; navigationReque
         <span v-else aria-current="page">{{ project?.manifest.name || '项目' }}</span>
       </nav>
       <header class="heading">
-        <div class="heading-left"><div class="eyebrow">{{ drama ? 'AI 短剧制作' : 'PROJECTS' }}</div><h1>{{ projectID ? (detail?.title || project?.manifest.name || '项目') : '项目' }}</h1><p v-if="drama">{{ drama.episodes.length }} 集 · {{ drama.episodes.reduce((n, e) => n + e.scenes.reduce((n, s) => n + s.shots.length, 0), 0) }} 镜 · {{ activeTab?.label }}</p><p v-else-if="!projectID">角色、音乐、短视频与 AI 短剧创作</p></div>
+        <div class="heading-left"><div class="eyebrow">{{ drama ? 'AI 短剧制作' : creative ? '创意视频制作' : 'PROJECTS' }}</div><h1>{{ projectID ? (detail?.title || project?.manifest.name || '项目') : '项目' }}</h1><p v-if="drama">{{ drama.episodes.length }} 集 · {{ drama.episodes.reduce((n, e) => n + e.scenes.reduce((n, s) => n + s.shots.length, 0), 0) }} 镜 · {{ activeTab?.label }}</p><p v-else-if="!projectID">角色、音乐、短视频、AI 短剧与创意视频</p></div>
         <div class="reference-row"><RouterLink v-if="!projectID" class="btn primary" to="/create">新建项目</RouterLink><RouterLink v-if="project" class="btn" :to="{ path: '/workspace', query: { project: projectID } }">本机工作副本</RouterLink><button class="btn" :disabled="loading || listLoading" @click="retry">刷新</button></div>
       </header>
 
@@ -170,9 +174,11 @@ onBeforeUnmount(() => { alive = false; request++; listRequest++; navigationReque
       <template v-else-if="project && reader">
         <div v-if="navigationError" class="state error" role="alert">{{ navigationError }}</div>
         <section v-if="project.manifest.asset_refs?.length" class="panel"><h2>数字世界引用</h2><div class="reference-row"><button v-for="ref in project.manifest.asset_refs" :key="`${ref.asset_id}:${ref.asset_version_id}:${ref.purpose}`" class="btn" @click="openWorld(ref)">{{ ref.purpose }} · 查看固定版本</button></div></section>
-        <nav v-if="drama || (!query('item') && !query('shot'))" class="business-tabs" aria-label="项目业务"><RouterLink v-for="tab in tabs" :key="tab.key" :class="{ active: activeTab?.key === tab.key }" :aria-current="activeTab?.key === tab.key ? 'page' : undefined" :to="link({ tab: tab.key, item: undefined, episode: undefined, scene: undefined, shot: undefined, material: undefined, state: undefined, version: undefined, compare: undefined, deliverable: undefined, kind: undefined, find: undefined, status: undefined, view: undefined, purpose: undefined, segment: undefined, continuity: undefined })">{{ tab.label }}</RouterLink></nav>
-        <div v-if="!content" class="state">暂无业务内容。</div>
+        <nav v-if="drama || creative || (!query('item') && !query('shot'))" class="business-tabs" aria-label="项目业务"><RouterLink v-for="tab in tabs" :key="tab.key" :class="{ active: activeTab?.key === tab.key }" :aria-current="activeTab?.key === tab.key ? 'page' : undefined" :to="link({ tab: tab.key, item: undefined, episode: undefined, scene: undefined, shot: undefined, material: undefined, state: undefined, version: undefined, compare: undefined, deliverable: undefined, kind: undefined, find: undefined, status: undefined, view: undefined, purpose: undefined, segment: undefined, continuity: undefined })">{{ tab.label }}</RouterLink></nav>
+        <CreativeVideoEditor v-if="!content && project.manifest.category === 'creative_video'" :reader="reader" @saved="creativeSaved" />
+        <div v-else-if="!content" class="state">暂无业务内容。</div>
         <ShortDramaProject v-else-if="drama" :reader="reader" :tab="activeTab?.key || 'script'" />
+        <CreativeVideoProject v-else-if="creative" :reader="reader" :tab="activeTab?.key || 'overview'" @saved="creativeSaved" />
         <div v-else-if="query('item') && !detail" class="state">当前项目修订中没有这项内容。</div>
         <article v-else-if="detail" :key="`${project.revision_id}:${activeTab?.key}:${detail.key}`" class="sections">
           <section class="panel"><h2>概述</h2><p class="prose">{{ value(detail.overview) }}</p><p v-if="detail.duration_seconds != null" class="muted">{{ duration(detail.duration_seconds) }}</p><dl v-if="detail.fields.length" class="fields"><template v-for="(field, i) in detail.fields" :key="i"><dt>{{ field.label }}</dt><dd>{{ value(field.value) }}</dd></template></dl></section>
