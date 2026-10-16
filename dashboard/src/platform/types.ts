@@ -5,6 +5,7 @@ export type Lifecycle = 'active' | 'hidden' | 'dispose'
 export type Unsubscribe = () => void
 export interface Context { userId: string; organizationId: string; stationId: string; projectId: string | null; appId: string; installationId: string; contextRevision: string }
 export interface AppSDK {
+  readonly media?: { preview(input: { bytes: ArrayBuffer; mime: string; title: string }): Promise<void>; close(): void }
   readonly version: string
   readonly context: { get(): Readonly<Context>; subscribe(listener: (value: Readonly<Context>) => void): Unsubscribe }
   readonly lifecycle: { subscribe(listener: (value: Lifecycle) => void): Unsubscribe }

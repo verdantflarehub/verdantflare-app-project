@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ProjectReader, readerError } from '../platform/project-reader'
+import { previewImage, closePreview } from '../platform/media-preview'
 const props = withDefaults(defineProps<{ reader: ProjectReader; fileId?: string | null; kind: 'image' | 'audio' | 'video' | 'file'; label: string; thumbnail?: boolean; objectPosition?: { x: number; y: number } }>(), { thumbnail: false })
 const source = ref(''), error = ref(''), busy = ref(false), downloadPath = ref('')
 const viewer = ref<HTMLDialogElement | null>(null)
 const zoomScale = ref(1), zoomTx = ref(0), zoomTy = ref(0), isDragging = ref(false)
 let dragStartX = 0, dragStartY = 0
 let generation = 0
+const previewOwner = {}, previewError = ref('')
 
 const waveformBars = computed(() => {
   const seed = `${props.fileId || ''}:${props.label || 'audio'}`
@@ -24,8 +26,12 @@ const waveformBars = computed(() => {
 function clampZoom(next: number) { return Math.max(0.5, Math.min(5, Math.round(next * 100) / 100)) }
 function resetZoom() { zoomScale.value = 1; zoomTx.value = 0; zoomTy.value = 0; isDragging.value = false }
 function stepZoom(delta: number) { zoomScale.value = clampZoom(zoomScale.value + delta) }
-function openLightbox() { resetZoom(); viewer.value?.showModal() }
-function closeLightbox() { resetZoom(); viewer.value?.close() }
+async function openLightbox() {
+  previewError.value = ''
+  try { if (await previewImage(previewOwner, source.value, props.label)) return; resetZoom(); viewer.value?.showModal() }
+  catch { previewError.value = '无法打开图片预览，请刷新后重试。' }
+}
+function closeLightbox() { closePreview(previewOwner); resetZoom(); viewer.value?.close() }
 function onWheelZoom(e: WheelEvent) {
   const stage = e.currentTarget as HTMLElement | null
   const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15
@@ -84,6 +90,7 @@ onBeforeUnmount(() => { generation++; closeLightbox() })
 
 <template>
   <div class="project-media" :class="[kind, { thumbnail }]" :aria-label="label">
+    <p v-if="previewError" role="alert">{{ previewError }}</p>
     <div v-if="kind === 'audio' && (source || fileId)" class="waveform-strip" data-gamma="0.7" aria-hidden="true">
       <span v-for="(barHeight, idx) in waveformBars" :key="idx" class="waveform-bar" :style="{ height: `${barHeight}px` }" />
     </div>
