@@ -163,6 +163,11 @@ func run() error {
 	if err = mcpregistration.ValidateListener(addr, mcpAddr, advertise, registryEndpoints, cert != ""); err != nil {
 		return err
 	}
+	readAddr, readToken := os.Getenv("PROJECT_READ_LISTEN"), os.Getenv("PROJECT_READ_TOKEN")
+	if err = validateReadListener(addr, mcpAddr, readAddr, cert != "", readToken,
+		[]string{serviceToken, authorityToken, ownCoord, peerCoord, os.Getenv("WORLD_SERVICE_TOKEN"), os.Getenv("ARTIFACT_SERVICE_TOKEN")}); err != nil {
+		return err
+	}
 	if cert != "" {
 		pair, loadErr := tls.LoadX509KeyPair(cert, key)
 		if loadErr != nil {
@@ -175,7 +180,7 @@ func run() error {
 		return errors.New("listener unavailable")
 	}
 	defer listener.Close()
-	done := make(chan error, 2)
+	done := make(chan error, 3)
 	serve := func(server *http.Server, listener net.Listener) {
 		if cert != "" {
 			done <- server.ServeTLS(listener, "", "")
@@ -195,6 +200,21 @@ func run() error {
 		protocolServer = &http.Server{Addr: mcpAddr, Handler: mcpregistration.MCPHandler(mcp, health), TLSConfig: server.TLSConfig, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 3 * time.Minute, IdleTimeout: time.Minute, MaxHeaderBytes: 16 << 10}
 		go serve(protocolServer, protocolListener)
 		defer protocolServer.Close()
+	}
+	var readServer *http.Server
+	if readAddr != "" {
+		readInternal, handlerErr := svc.HTTPHandler(readToken, authorityToken)
+		if handlerErr != nil {
+			return handlerErr
+		}
+		readListener, listenErr := net.Listen("tcp", readAddr)
+		if listenErr != nil {
+			return errors.New("read listener unavailable")
+		}
+		defer readListener.Close()
+		readServer = &http.Server{Addr: readAddr, Handler: projectReadHandler(readInternal, health), TLSConfig: server.TLSConfig, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 3 * time.Minute, IdleTimeout: time.Minute, MaxHeaderBytes: 16 << 10}
+		go serve(readServer, readListener)
+		defer readServer.Close()
 	}
 	tools := []mcpregistration.ToolDefinition{}
 	for _, tool := range project.MCPTools() {
@@ -222,6 +242,9 @@ func run() error {
 		err = server.Shutdown(shutdown)
 		if protocolServer != nil {
 			err = errors.Join(err, protocolServer.Shutdown(shutdown))
+		}
+		if readServer != nil {
+			err = errors.Join(err, readServer.Shutdown(shutdown))
 		}
 		return err
 	}
