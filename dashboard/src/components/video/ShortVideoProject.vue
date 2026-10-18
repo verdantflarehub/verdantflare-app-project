@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ProjectReader, projectContentView, type Cast } from '../../platform/project-reader'
 import ProjectMedia from '../ProjectMedia.vue'
+import ProjectAttachment from '../ProjectAttachment.vue'
 import ProjectPrompt from '../ProjectPrompt.vue'
 import ProjectEditDialog from '../ProjectEditDialog.vue'
 import { useRouter } from 'vue-router'
@@ -57,7 +58,7 @@ function castLink(cast: Cast) {
           <h2>结果视频</h2>
           <div class="outputs"><ProjectMedia v-for="(id, i) in board.result_file_ids" :key="`${id}:${i}`" :reader="reader" :file-id="id" kind="video" :label="`${board.title} ${i + 1}`" /><ProjectMedia v-if="!board.result_file_ids.length" :reader="reader" kind="video" :label="board.title" /></div>
         </section>
-        <section v-if="board.file_ids.length" class="panel"><h2>文件</h2><ProjectMedia v-for="id in board.file_ids" :key="id" :reader="reader" :file-id="id" kind="file" :label="reader.file(id).path" /></section>
+        <section v-if="board.file_ids.length" class="panel"><h2>相关文件</h2><ProjectAttachment v-for="id in board.file_ids" :key="`${board.key}:${id}`" :reader="reader" :file-id="id" /></section>
       </article>
     </template>
     <template v-else-if="tab === 'cast'">
