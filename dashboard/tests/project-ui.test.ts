@@ -206,3 +206,19 @@ test('interaction physics tokens, 48-bar 0.7 Gamma waveform, lightbox affine zoo
   const diffHtml = await render.render('components/ProjectRevisionDetail.vue', { revision: current, parent, historyBusy: false })
   assert.match(diffHtml, /diff-viewer/); assert.match(diffHtml, /diff-ln/); assert.match(diffHtml, /diff-sign/); assert.match(diffHtml, /diff-cell/)
 })
+
+test('full-film versions appear before storyboards without hiding the current preview', async () => {
+  const render = renderer(), reader: any = videoReader()
+  reader.content.video.output_file_id = id(10)
+  reader.content.video.outputs = [
+    { key: 'v3', title: '第三版粗剪', overview: '带旁白', duration_seconds: 120, result_file_ids: [id(10)] },
+    { key: 'v2', title: '第二版粗剪', overview: '舞台结尾', duration_seconds: 120, result_file_ids: [id(11)] },
+  ]
+  const html = await render.render('components/video/ShortVideoProject.vue', { reader, tab: 'storyboards' })
+  for (const title of ['第三版粗剪', '第二版粗剪']) assert(html.indexOf(title) < html.indexOf('short-video-boards'))
+  assert.match(html, /当前预览/); assert.match(html, /舞台结尾/)
+  assert.equal((html.match(/加载视频/g) || []).length, 2)
+  reader.content.video.output_file_id = id(12)
+  const unmatched = await render.render('components/video/ShortVideoProject.vue', { reader, tab: 'storyboards' })
+  assert.equal((unmatched.match(/加载视频/g) || []).length, 3)
+})

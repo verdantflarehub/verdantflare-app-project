@@ -97,7 +97,7 @@ export interface ProjectContent {
   cover_position?: CoverPosition; cover_placeholder?: boolean
   character?: { name: string | null; portrait_file_id: string | null; portrait_prompt: string | null; sheet_file_id: string | null; sheet_prompt: string | null; fields: Field[]; extensions: Detail[] }
   music?: { artist: string | null; name: string | null; voice: { name: string | null; description: string | null; recordings: Detail[]; models: Detail[] }; songs: Detail[]; mvs: Detail[] }
-  video?: { duration_seconds: number | null; aspect: string | null; output_file_id: string | null; storyboards: Detail[]; cast: Cast[] }
+  video?: { duration_seconds: number | null; aspect: string | null; output_file_id: string | null; outputs?: Detail[]; storyboards: Detail[]; cast: Cast[] }
   ai_short_drama?: { script_file_id: string | null; aspect: string | null; globals: DramaGlobal[]; usages: DramaUsage[]; deliverables: DramaDeliverable[]; world_candidates: DramaWorldCandidate[]; continuity: DramaContinuity[]; episodes: DramaEpisode[] }
   creative_video?: CreativeVideoContent
 }
@@ -152,7 +152,7 @@ export function parseProjectContent(raw: string, project: ProjectOpen): ProjectC
     result.music = { artist: text(body.artist), name: text(body.name), voice: { name: text(voice.name), description: text(voice.description), recordings: details(voice.recordings), models: details(voice.models, 'voice') }, songs: details(body.songs, 'songs'), mvs: details(body.mvs, 'mvs') }
   }
   if (category === 'video') result.video = {
-    duration_seconds: number(body.duration_seconds), aspect: text(body.aspect), output_file_id: reference(body.output_file_id), storyboards: details(body.storyboards),
+    duration_seconds: number(body.duration_seconds), aspect: text(body.aspect), output_file_id: reference(body.output_file_id), outputs: details(body.outputs), storyboards: details(body.storyboards),
     cast: unique(array(body.cast, item => {
       const c = object(item), projectID = text(c.project_id), revisionID = text(c.revision_id)
       if (c.role !== 'lead' && c.role !== 'support') invalid()

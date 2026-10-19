@@ -35,3 +35,14 @@ test('download paths accept only host session opaque handles', () => {
     assert.throws(() => controlledContentPath(value))
   }
 })
+
+test('video output versions are optional and reject files outside the fixed revision', () => {
+  const work: ProjectOpen = { ...project, manifest: { ...project.manifest, category: 'video' } }
+  const body = { schema_version: 1, kind: 'project-content', category: 'video', video: { output_file_id: id(3) } }
+  assert.deepEqual(parseProjectContent(JSON.stringify(body), work).video?.outputs, [])
+  const version = { key: 'cut2', title: 'Second cut', result_file_ids: [id(3)] }
+  const parse = (outputs: unknown[]) => parseProjectContent(JSON.stringify({ ...body, video: { ...body.video, outputs } }), work)
+  assert.equal(parse([version]).video?.outputs?.[0].result_file_ids[0], id(3))
+  assert.throws(() => parse([{ ...version, result_file_ids: [id(99)] }]), /当前项目修订/)
+  assert.throws(() => parse([version, version]), /格式/)
+})

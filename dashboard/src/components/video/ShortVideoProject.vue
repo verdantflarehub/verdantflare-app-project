@@ -16,6 +16,8 @@ function saved(revision: string) { editing.value = undefined; void router.replac
 const project = computed(() => props.reader.project!)
 const content = computed(() => projectContentView(project.value, props.reader.content)!)
 const video = computed(() => content.value.video!)
+const outputs = computed(() => video.value.outputs || [])
+const currentListed = computed(() => outputs.value.some(output => output.result_file_ids.includes(video.value.output_file_id || '')))
 const item = computed(() => typeof route.query.item === 'string' ? route.query.item : '')
 const castDetail = computed(() => video.value.cast.find(entry => entry.key === item.value))
 const board = computed(() => video.value.storyboards.find(entry => entry.key === item.value))
@@ -79,7 +81,15 @@ function castLink(cast: Cast) {
     <template v-else>
       <section class="panel video-preview">
         <h2>成片预览</h2><p class="overview">{{ value(content.overview) }}</p>
-        <ProjectMedia :reader="reader" :file-id="video.output_file_id" kind="video" :label="project.manifest.name" />
+        <ProjectMedia v-if="!outputs.length || (video.output_file_id && !currentListed)" :reader="reader" :file-id="video.output_file_id" kind="video" :label="project.manifest.name" />
+        <div v-if="outputs.length" class="film-versions" aria-label="粗剪与成片版本">
+          <article v-for="output in outputs" :key="output.key" class="film-version">
+            <h3>{{ output.title }} <span v-if="output.result_file_ids.includes(video.output_file_id || '')" class="muted">· 当前预览</span></h3>
+            <p v-if="output.overview" class="overview">{{ output.overview }}</p><p class="muted">{{ duration(output.duration_seconds) }}</p>
+            <ProjectMedia v-for="(id, index) in output.result_file_ids" :key="id" :reader="reader" :file-id="id" kind="video" :label="`${output.title} ${index + 1}`" />
+            <p v-if="!output.result_file_ids.length" class="muted">此版本尚未添加视频。</p>
+          </article>
+        </div>
       </section>
       <section class="short-video-boards">
         <header class="section-heading"><h2>故事板</h2><span class="muted">{{ video.storyboards.length }} 个故事板 · {{ duration(video.duration_seconds) }}<template v-if="video.aspect"> · {{ video.aspect }}</template></span></header>
@@ -98,6 +108,7 @@ function castLink(cast: Cast) {
 </template>
 
 <style scoped>
+.film-versions { display:grid; gap:24px; }.film-version { display:grid; gap:12px; padding-top:20px; border-top:1px solid var(--line); }.film-version h3,.film-version p { margin:0; }
 .short-video-page,.short-video-detail,.outputs { display:grid; gap:16px; min-width:0; }
 .panel { margin:0; padding:20px; border:1px solid var(--line); border-radius:12px; background:var(--shell-panel); min-width:0; }
 h2 { font-size:18px; font-weight:600; line-height:1.6; margin:0 0 16px; }h3 { font-size:17px; font-weight:600; line-height:1.6; }
