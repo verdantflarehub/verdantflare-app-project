@@ -37,7 +37,7 @@ export function canonicalRoute(domain: Domain, path: string): string {
       url.pathname = '/projects'
       url.searchParams.set('category', cat)
     }
-    if (!['/', '/projects', '/create', '/workspace', '/use-asset', '/publication'].includes(url.pathname) || (mode && mode !== 'projects')) invalid()
+    if (!['/', '/projects', '/create', '/create/from-prompt', '/workspace', '/use-asset', '/publication'].includes(url.pathname) || (mode && mode !== 'projects')) invalid()
     if (files) url.pathname = uuid.test(url.searchParams.get('project') || '') ? '/workspace' : '/projects'
     else if (url.pathname === '/') url.pathname = '/projects'
   } else {

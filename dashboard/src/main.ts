@@ -5,6 +5,7 @@ import WorkspacePage from './pages/WorkspacePage.vue'
 import UseAssetPage from './pages/UseAssetPage.vue'
 import PublicationPage from './pages/PublicationPage.vue'
 import CreateProjectPage from './pages/CreateProjectPage.vue'
+import CreateFromPromptPage from './pages/CreateFromPromptPage.vue'
 import { connectHost, disconnectHost } from './platform/host'
 import { canonicalRoute } from './platform/route-links'
 import { createProjectHistory } from './platform/project-history'
@@ -18,6 +19,7 @@ async function mount() {
     { path: '/', redirect: '/projects' },
     { path: '/projects', component: Browser },
     { path: '/create', component: CreateProjectPage },
+    { path: '/create/from-prompt', component: CreateFromPromptPage },
     { path: '/workspace', component: WorkspacePage },
     { path: '/use-asset', component: UseAssetPage },
     { path: '/publication', component: PublicationPage },
