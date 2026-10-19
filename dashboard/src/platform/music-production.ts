@@ -12,6 +12,17 @@ export interface MusicVersion {
   review: DramaReview; sources: MusicSource[]
 }
 export interface MusicProduction { versions: MusicVersion[]; selected_version_key: string | null }
+// Rejected revisions remain immutable history but are not current listening choices.
+export const visibleMusicVersions = (production?: MusicProduction) => (production?.versions || []).filter(v => v.review.state !== 'rejected')
+export function currentMusicVersion(production?: MusicProduction, requested = '') {
+  const versions = visibleMusicVersions(production)
+  if (requested) return versions.find(v => v.key === requested)
+  return versions.find(v => v.key === production?.selected_version_key) || versions[0]
+}
+export function currentMusicOutput(entry: Pick<Detail, 'production' | 'result_file_ids'>) {
+  if (!entry.production?.versions.length) return entry.result_file_ids[0]
+  return currentMusicVersion(entry.production)?.file_refs.find(f => f.purpose === 'output')?.file_id
+}
 export const musicVersionKinds = { model: '人声模型', demo: 'Demo', audio: '音频版本', master: '母带', video: 'MV' }
 export const musicReview = (review: DramaReview) => ({ unreviewed: '未审核', in_review: '审核中', approved: '已有审核记录', rejected: '需修改' })[review.state]
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/

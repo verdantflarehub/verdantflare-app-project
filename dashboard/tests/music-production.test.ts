@@ -70,3 +70,25 @@ test('viewing a master keeps actual adoption separate and displays only its own 
   assert.doesNotMatch(html, /调整第二段歌词/); assert.doesNotMatch(html, /未添加母带/)
   assert.equal(detail.production!.selected_version_key, 'demo1')
 })
+
+test('rejected versions stay in history but disappear from current listening and fixed links do not substitute', async () => {
+  const { currentMusicOutput, visibleMusicVersions } = await import('../src/platform/music-production.ts')
+  const f = fixture()
+  f.v.review.state = 'rejected'; f.v.label = 'Archived candidate'
+  f.raw.music.songs[0].production.versions.push({ ...structuredClone(f.v), key: 'demo2', label: 'V9 试听', parent_version_key: 'demo1', change_note: '新伴奏', review: { state: 'unreviewed', record_file_id: null } })
+  f.raw.music.songs[0].production.selected_version_key = 'demo1'
+  const detail = f.parse().music!.songs[0], reader = { project: f.project, file: () => f.project.manifest.files[0] }, render = renderer()
+  assert.equal(detail.production!.versions.length, 2)
+  assert.deepEqual(visibleMusicVersions(detail.production).map(v => v.key), ['demo2'])
+  assert.equal(currentMusicOutput(detail), id(10))
+  const html = await render.render('components/MusicProduction.vue', { reader, detail, group: 'songs' })
+  assert.match(html, /V9 试听/); assert.doesNotMatch(html, /Archived candidate/); assert.match(html, /实际选用：未选定/)
+  const archived = await render.render('components/MusicProduction.vue', { reader, detail, group: 'songs' }, '/projects?version=demo1')
+  assert.match(archived, /已归档/); assert.doesNotMatch(archived, /新伴奏|选用当前版本/)
+  detail.production!.versions[1].review.state = 'rejected'
+  detail.result_file_ids = [id(10)]
+  assert.equal(currentMusicOutput(detail), undefined)
+  const empty = await render.render('components/MusicProduction.vue', { reader, detail, group: 'songs' })
+  assert.match(empty, /暂无可试听版本/); assert.doesNotMatch(empty, /历史成果|尚未登记制作版本|Archived candidate/)
+  assert.equal(detail.production!.versions.length, 2)
+})

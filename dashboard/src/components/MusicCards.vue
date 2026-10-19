@@ -1,13 +1,10 @@
 <script setup lang="ts">
 import { useRoute } from 'vue-router'
 import type { Detail, ProjectReader } from '../platform/project-reader'
+import { currentMusicOutput } from '../platform/music-production'
 import ProjectMedia from './ProjectMedia.vue'
 defineProps<{ reader: ProjectReader; entries: Detail[]; group: 'songs' | 'mvs' }>()
 const route = useRoute()
-function audio(entry: Detail) {
-  if (!entry.production?.selected_version_key) return entry.result_file_ids[0]
-  return entry.production.versions.find(v => v.key === entry.production?.selected_version_key)?.file_refs.find(f => f.purpose === 'output')?.file_id
-}
 </script>
 <template>
   <div class="music-cards">
@@ -16,7 +13,7 @@ function audio(entry: Detail) {
         <ProjectMedia v-if="entry.image_file_id" :reader="reader" :file-id="entry.image_file_id" kind="image" :label="entry.title" thumbnail /><div v-else class="music-glyph" aria-hidden="true">♫</div>
         <div class="card-text"><h2>{{ entry.title }}</h2><p>{{ entry.overview || '未填写' }}</p><span>{{ group === 'songs' ? '查看歌曲' : '查看 MV' }} →</span></div>
       </RouterLink>
-      <div v-if="group === 'songs'" class="preview"><ProjectMedia :reader="reader" :file-id="audio(entry)" kind="audio" :label="entry.title + '试听'" /></div>
+      <div v-if="group === 'songs'" class="preview"><ProjectMedia :reader="reader" :file-id="currentMusicOutput(entry)" kind="audio" :label="entry.title + '试听'" /></div>
     </article>
   </div>
 </template>

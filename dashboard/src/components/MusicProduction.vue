@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref, shallowRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ProjectReader, type Detail, type ProjectItem } from '../platform/project-reader'
-import { musicEntry, musicSourceEntry, musicVersionKinds, musicReview, type MusicGroup, type MusicSource, type MusicVersion } from '../platform/music-production'
+import { visibleMusicVersions, currentMusicVersion, musicEntry, musicSourceEntry, musicVersionKinds, musicReview, type MusicGroup, type MusicSource, type MusicVersion } from '../platform/music-production'
 import { contentChanges, createProjectEditor, verifyEditReadback, type EditState } from '../platform/project-edit'
 import { collectProjects } from '../platform/project-management'
 import { callTool } from '../platform/mcp'
@@ -12,14 +12,16 @@ import MusicFixedSource from './MusicFixedSource.vue'
 const props = defineProps<{ reader: ProjectReader; detail: Detail; group: MusicGroup }>()
 const emit = defineEmits<{ saved: [revision: string] }>()
 const route = useRoute(), router = useRouter(), { appSDK, dashboardHost } = useHost()
-const versions = computed(() => props.detail.production?.versions || [])
+const allVersions = computed(() => props.detail.production?.versions || [])
+const versions = computed(() => visibleMusicVersions(props.detail.production))
 const requested = computed(() => typeof route.query.version === 'string' ? route.query.version : '')
-const version = computed(() => versions.value.find(v => v.key === (requested.value || props.detail.production?.selected_version_key || versions.value[0]?.key)))
+const version = computed(() => currentMusicVersion(props.detail.production, requested.value))
+const archived = computed(() => !!requested.value && allVersions.value.some(v => v.key === requested.value && v.review.state === 'rejected'))
 const missing = computed(() => !!requested.value && !version.value)
 const baseReader = shallowRef(props.reader)
 const canWrite = computed(() => baseReader.value.project?.can_write === true && baseReader.value.project.revision_id === baseReader.value.project.head_revision_id)
 const selected = computed(() => versions.value.find(v => v.key === props.detail.production?.selected_version_key))
-const legacy = computed(() => !versions.value.length && !requested.value)
+const legacy = computed(() => !allVersions.value.length && !requested.value)
 const dialog = ref<HTMLDialogElement>(), mode = ref<'register' | 'select'>('register'), error = ref(''), busy = ref(false), hidden = ref(false), pending = ref(false), state = ref<EditState>('unknown')
 const label = ref(''), note = ref(''), parent = ref(''), kind = ref<MusicVersion['kind']>(props.group === 'voice' ? 'model' : props.group === 'mvs' ? 'video' : 'demo')
 const selectionKey = ref('')
@@ -31,8 +33,8 @@ const audioOptions = computed(() => baseReader.value.project!.manifest.files.fil
 const sourceItems = computed(() => sourceKind.value === 'recording' ? sourceReader.value?.content?.music?.voice.recordings : sourceKind.value === 'model' ? sourceReader.value?.content?.music?.voice.models : sourceReader.value?.content?.music?.songs)
 const sourceEntry = computed(() => sourceItems.value?.find(e => e.key === sourceItem.value))
 const sourceOutputs = computed(() => [
-  ...(sourceEntry.value?.production?.versions || []).map(v => ({ key: 'version:' + v.key, name: `${v.label} · ${musicVersionKinds[v.kind]} · ${musicReview(v.review)}` })),
-  ...[...new Set([...(sourceEntry.value?.result_file_ids || []), ...(sourceEntry.value?.file_ids || [])])].map(id => ({ key: 'file:' + id, name: `${sourceReader.value?.file(id).path} · 历史文件（版本与审核未登记）` })),
+  ...visibleMusicVersions(sourceEntry.value?.production).map(v => ({ key: 'version:' + v.key, name: `${v.label} · ${musicVersionKinds[v.kind]} · ${musicReview(v.review)}` })),
+  ...(sourceEntry.value?.production?.versions.length ? [] : [...new Set([...(sourceEntry.value?.result_file_ids || []), ...(sourceEntry.value?.file_ids || [])])]).map(id => ({ key: 'file:' + id, name: `${sourceReader.value?.file(id).path} · 历史文件（版本与审核未登记）` })),
 ])
 let alive = true, generation = 0, editor: ReturnType<typeof createProjectEditor> | undefined
 let focusBefore: HTMLElement | undefined
@@ -41,7 +43,7 @@ function restoreDraft() {
   const saved = editor?.pending()?.request.changes.upsert_files?.[0]
   if (!saved) return
   const item = musicEntry(JSON.parse(saved.text).music, props.group, props.detail.key), production = item?.production
-  const added = production?.versions.find(v => !versions.value.some(old => old.key === v.key))
+  const added = production?.versions.find(v => !allVersions.value.some(old => old.key === v.key))
   if (added) {
     mode.value = 'register'; label.value = added.label; note.value = added.change_note; parent.value = added.parent_version_key || ''; kind.value = added.kind
     output.value = added.file_refs.find(f => f.purpose === 'output')?.file_id || ''
@@ -89,7 +91,7 @@ async function changes() {
   if (!item) throw Error('当前修订没有此作品。')
   item.production ||= { versions: [], selected_version_key: null }
   if (mode.value === 'select') {
-    if (!selectionKey.value || !item.production.versions.some(v => v.key === selectionKey.value)) throw Error('当前查看版本不可选用。')
+    if (!selectionKey.value || !visibleMusicVersions(item.production).some(v => v.key === selectionKey.value)) throw Error('当前查看版本不可选用。')
     item.production.selected_version_key = selectionKey.value
   } else {
     if (!label.value.trim() || !note.value.trim() || !output.value) throw Error('请填写版本名称、修改说明并选择已有成果。')
@@ -141,7 +143,8 @@ onBeforeUnmount(() => { alive = false; generation++; editor?.dispose(); sourceRe
     <header><h2>{{ group === 'voice' ? '模型版本与试听' : group === 'songs' ? '音频成果与版本' : 'MV 成果与版本' }}</h2><button v-if="canWrite" class="btn" :disabled="busy" @click="open('register')">登记已有制作版本</button></header>
     <p>实际选用：{{ selected?.label || '未选定' }}</p>
     <label v-if="versions.length">当前查看 <select aria-label="当前查看制作版本" :value="version?.key || requested" @change="router.push({ path: route.path, query: { ...route.query, version: ($event.target as HTMLSelectElement).value } })"><option v-if="missing" :value="requested">当前修订缺少此版本</option><option v-for="v in versions" :key="v.key" :value="v.key">{{ v.label }} · {{ musicVersionKinds[v.kind] }}</option></select></label>
-    <p v-if="missing" role="status">当前固定修订没有此制作版本，不以其他版本替代。</p>
+    <p v-if="archived" role="status">此版本已归档，不作为当前试听。</p>
+    <p v-else-if="missing" role="status">当前固定修订没有此制作版本，不以其他版本替代。</p>
     <template v-else-if="version">
       <p>{{ musicVersionKinds[version.kind] }} · {{ musicReview(version.review) }}</p>
       <div class="outputs"><ProjectMedia v-for="f in version.file_refs.filter(f => f.purpose === (group === 'voice' ? 'sample' : 'output'))" :key="f.file_id" :reader="reader" :file-id="f.file_id" :kind="group === 'mvs' ? 'video' : 'audio'" :label="version.label" /></div>
@@ -158,6 +161,7 @@ onBeforeUnmount(() => { alive = false; generation++; editor?.dispose(); sourceRe
       <ProjectMedia v-for="id in detail.result_file_ids" :key="id" :reader="reader" :file-id="id" :kind="group === 'mvs' ? 'video' : 'audio'" :label="detail.title + (group === 'voice' ? '试听' : '历史成果')" />
       <p v-if="!detail.result_file_ids.length" class="muted">{{ group === 'voice' ? '此模型未登记试听；干声录音不代替模型效果。' : '未添加成果。' }}</p>
     </template>
+    <p v-if="!requested && allVersions.length && !versions.length" role="status">暂无可试听版本。</p>
     <p v-if="group === 'songs' && versions.length && !versions.some(v => v.kind === 'master')" class="muted">未添加母带。</p>
     <p v-if="error && !dialog?.open" role="alert">{{ error }}</p>
   </section>
