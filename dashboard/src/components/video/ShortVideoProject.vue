@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ProjectReader, projectContentView, type Cast } from '../../platform/project-reader'
 import ProjectMedia from '../ProjectMedia.vue'
@@ -17,7 +17,24 @@ const project = computed(() => props.reader.project!)
 const content = computed(() => projectContentView(project.value, props.reader.content)!)
 const video = computed(() => content.value.video!)
 const outputs = computed(() => video.value.outputs || [])
-const currentListed = computed(() => outputs.value.some(output => output.result_file_ids.includes(video.value.output_file_id || '')))
+const selectedVersion = ref('')
+const previewVersions = computed(() => {
+  const versions = outputs.value.flatMap(output => {
+    const ids = output.result_file_ids.length ? output.result_file_ids : [null]
+    return ids.map((fileId, index) => ({
+      key: JSON.stringify([output.key, fileId]), fileId,
+      title: `${output.title}${ids.length > 1 ? ` · 视频 ${index + 1}` : ''}`,
+      overview: output.overview, duration: output.duration_seconds,
+    }))
+  })
+  if (video.value.output_file_id && !versions.some(version => version.fileId === video.value.output_file_id)) {
+    versions.unshift({ key: 'current', fileId: video.value.output_file_id, title: '当前版本', overview: '', duration: video.value.duration_seconds })
+  }
+  return versions
+})
+const defaultVersion = computed(() => previewVersions.value.find(version => version.fileId === video.value.output_file_id) || previewVersions.value[0])
+const activeVersion = computed(() => previewVersions.value.find(version => version.key === selectedVersion.value) || defaultVersion.value)
+watch(() => [project.value.project_id, project.value.revision_id], () => { selectedVersion.value = '' })
 const item = computed(() => typeof route.query.item === 'string' ? route.query.item : '')
 const castDetail = computed(() => video.value.cast.find(entry => entry.key === item.value))
 const board = computed(() => video.value.storyboards.find(entry => entry.key === item.value))
@@ -80,16 +97,23 @@ function castLink(cast: Cast) {
     </template>
     <template v-else>
       <section class="panel video-preview">
-        <h2>成片预览</h2><p class="overview">{{ value(content.overview) }}</p>
-        <ProjectMedia v-if="!outputs.length || (video.output_file_id && !currentListed)" :reader="reader" :file-id="video.output_file_id" kind="video" :label="project.manifest.name" />
-        <div v-if="outputs.length" class="film-versions" aria-label="粗剪与成片版本">
-          <article v-for="output in outputs" :key="output.key" class="film-version">
-            <h3>{{ output.title }} <span v-if="output.result_file_ids.includes(video.output_file_id || '')" class="muted">· 当前预览</span></h3>
-            <p v-if="output.overview" class="overview">{{ output.overview }}</p><p class="muted">{{ duration(output.duration_seconds) }}</p>
-            <ProjectMedia v-for="(id, index) in output.result_file_ids" :key="id" :reader="reader" :file-id="id" kind="video" :label="`${output.title} ${index + 1}`" />
-            <p v-if="!output.result_file_ids.length" class="muted">此版本尚未添加视频。</p>
-          </article>
+        <div class="preview-heading">
+          <h2>成片预览</h2>
+          <label v-if="previewVersions.length > 1" class="version-picker">选择版本
+            <select :value="activeVersion?.key" @change="selectedVersion = ($event.target as HTMLSelectElement).value">
+              <option v-for="version in previewVersions" :key="version.key" :value="version.key">{{ version.title }}{{ version.fileId && version.fileId === video.output_file_id ? ' · 当前版本' : '' }}</option>
+            </select>
+          </label>
         </div>
+        <div class="preview-stage">
+          <ProjectMedia :key="activeVersion?.key || 'empty'" :reader="reader" :file-id="activeVersion?.fileId" kind="video" :label="activeVersion?.title || project.manifest.name" />
+          <div v-if="activeVersion" class="preview-caption" aria-live="polite">
+            <h3>{{ activeVersion.title }}</h3>
+            <p class="muted">{{ duration(activeVersion.duration) }}</p>
+            <p v-if="activeVersion.overview" class="overview">{{ activeVersion.overview }}</p>
+          </div>
+        </div>
+        <details v-if="content.overview" class="project-overview"><summary>项目说明</summary><p class="overview">{{ content.overview }}</p></details>
       </section>
       <section class="short-video-boards">
         <header class="section-heading"><h2>故事板</h2><span class="muted">{{ video.storyboards.length }} 个故事板 · {{ duration(video.duration_seconds) }}<template v-if="video.aspect"> · {{ video.aspect }}</template></span></header>
@@ -108,7 +132,16 @@ function castLink(cast: Cast) {
 </template>
 
 <style scoped>
-.film-versions { display:grid; gap:24px; }.film-version { display:grid; gap:12px; padding-top:20px; border-top:1px solid var(--line); }.film-version h3,.film-version p { margin:0; }
+.preview-heading { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; }.preview-heading h2 { margin:0; }
+.version-picker { display:flex; align-items:center; flex-wrap:wrap; gap:10px; font-size:13px; color:var(--muted); max-width:100%; }
+.version-picker select { max-width:100%; padding:8px 12px; border:1px solid var(--line); border-radius:8px; background:var(--shell-panel); color:var(--ink); font:inherit; }
+.version-picker select:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.preview-stage { width:100%; max-width:960px; margin-inline:auto; min-width:0; }
+.preview-stage :deep(.project-media) { aspect-ratio:16 / 9; display:grid; align-items:center; }
+.preview-stage :deep(video) { width:100%; height:100%; max-height:540px; object-fit:contain; }
+.preview-caption { display:grid; gap:8px; padding-top:16px; }.preview-caption h3,.preview-caption p { margin:0; }
+.project-overview { margin-top:20px; padding-top:16px; border-top:1px solid var(--line); }.project-overview summary { cursor:pointer; color:var(--muted); font-size:13px; }
+.project-overview .overview { margin-bottom:0; }
 .short-video-page,.short-video-detail,.outputs { display:grid; gap:16px; min-width:0; }
 .panel { margin:0; padding:20px; border:1px solid var(--line); border-radius:12px; background:var(--shell-panel); min-width:0; }
 h2 { font-size:18px; font-weight:600; line-height:1.6; margin:0 0 16px; }h3 { font-size:17px; font-weight:600; line-height:1.6; }
@@ -126,7 +159,7 @@ h2 { font-size:18px; font-weight:600; line-height:1.6; margin:0 0 16px; }h3 { fo
 .short-video-cast-link { display:grid; grid-template-columns:100px minmax(0,1fr); align-items:start; gap:20px; min-width:0; }.short-video-cast-link>:deep(.project-media) { width:100px; height:136px; aspect-ratio:auto; border-radius:8px; }.short-video-cast-link strong { font-size:20px; }.cast-role { margin-top:16px; font-size:13px; }
 .short-video-cast-link :deep(.media-state) { min-height:0; height:100%; padding:8px; font-size:12px; }
 .empty { padding:24px; border:1px dashed var(--line); border-radius:8px; color:var(--muted); }
-.video-preview :deep(video),.outputs :deep(video) { width:auto; max-width:100%; max-height:640px; }.video-preview :deep(.project-media),.outputs :deep(.project-media) { background:var(--subtle); border-radius:8px; }
+.outputs :deep(video) { width:auto; max-width:100%; max-height:640px; }.video-preview :deep(.project-media),.outputs :deep(.project-media) { background:var(--subtle); border-radius:8px; }
 .video-preview :deep(.media-state),.outputs :deep(.media-state) { min-height:110px; padding:24px; }
 @media(max-width:1100px) { .short-video-board-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }.short-video-cast-grid { grid-template-columns:minmax(0,1fr); } }
 @media(max-width:650px) { .short-video-board-grid { grid-template-columns:minmax(0,1fr); }.panel { padding:18px; }.fields { grid-template-columns:70px minmax(0,1fr); }.short-video-cast-card { padding:12px; }.short-video-cast-link { grid-template-columns:80px minmax(0,1fr); gap:12px; }.short-video-cast-link>:deep(.project-media) { width:80px; height:110px; } }
