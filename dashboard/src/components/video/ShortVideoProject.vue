@@ -39,7 +39,7 @@ const item = computed(() => typeof route.query.item === 'string' ? route.query.i
 const castDetail = computed(() => video.value.cast.find(entry => entry.key === item.value))
 const board = computed(() => video.value.storyboards.find(entry => entry.key === item.value))
 const roles = [{ key: 'lead', label: '主角' }, { key: 'support', label: '配角' }] as const
-const duration = (seconds?: number | null) => seconds == null ? '时长未填写' : `${seconds} 秒`
+const duration = (seconds?: number | null) => seconds == null ? '时长未填写' : `${Number(seconds.toFixed(2))} 秒`
 const value = (text?: string | null) => text?.trim() ? text : '未填写'
 function boardLink(key: string) {
   return { path: route.path, query: { ...route.query, tab: 'storyboards', item: key } }
