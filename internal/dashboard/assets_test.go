@@ -152,6 +152,55 @@ func TestPackageAcceptsFourBusinessNavigationAndRejectsTamperedChildren(t *testi
 	}
 }
 
+func TestPackageAcceptsImageNavigationAndRejectsTampering(t *testing.T) {
+	root := fixture(t)
+	path := filepath.Join(root, "navigation-declaration.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var nav map[string]any
+	if err = json.Unmarshal(raw, &nav); err != nil {
+		t.Fatal(err)
+	}
+	nav["schemaVersion"] = 2
+	entry := nav["entry"].(map[string]any)
+	entry["title"], entry["route"] = "项目管理", ""
+	children := []map[string]any{}
+	for i, category := range []struct{ id, title string }{
+		{"character", "角色设计"}, {"music", "音乐制作"}, {"video", "创意视频"},
+		{"ai_short_drama", "短剧制作"}, {"image", "图像创作"},
+	} {
+		children = append(children, map[string]any{"entryId": category.id, "title": category.title, "route": "/" + category.id, "accessRuleRef": "project-read", "order": i})
+	}
+	entry["children"] = children
+	write := func() {
+		t.Helper()
+		data, _ := json.Marshal(nav)
+		if err := os.WriteFile(path, data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write()
+	if _, err := Load(root, "0.1.0"); err != nil {
+		t.Fatal("current navigation declaration rejected", err)
+	}
+	image := children[len(children)-1]
+	for _, field := range []string{"route", "entryId", "title", "accessRuleRef", "order"} {
+		old := image[field]
+		if field == "order" {
+			image[field] = 0
+		} else {
+			image[field] = "/unexpected"
+		}
+		write()
+		if _, err := Load(root, "0.1.0"); err == nil {
+			t.Fatalf("tampered image %s accepted", field)
+		}
+		image[field] = old
+	}
+}
+
 // Exercise the actual exported release bytes when doing local delivery checks.
 func TestPackageLoadsExportedDashboard(t *testing.T) {
 	root := os.Getenv("PROJECT_DASHBOARD_TEST_DIR")

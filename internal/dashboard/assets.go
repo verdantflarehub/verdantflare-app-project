@@ -130,7 +130,7 @@ func validProjectNavigation(schema int, route string, children *[]navigationChil
 	if schema == 1 {
 		return route == "/" && children == nil
 	}
-	if schema != 2 || route != "" || children == nil || len(*children) != 4 {
+	if schema != 2 || route != "" || children == nil || (len(*children) != 4 && len(*children) != 5) {
 		return false
 	}
 	expected := []navigationChild{
@@ -138,6 +138,11 @@ func validProjectNavigation(schema int, route string, children *[]navigationChil
 		{"music", "音乐制作", "/projects?category=music", "project-read", 1},
 		{"video", "创意视频", "/projects?category=video", "project-read", 2},
 		{"ai_short_drama", "短剧制作", "/projects?category=ai_short_drama", "project-read", 3},
+	}
+	// Keep immutable four-category releases readable while accepting the
+	// current image category only at its declared path and position.
+	if len(*children) == 5 {
+		expected = append(expected, navigationChild{"image", "图像创作", "/image", "project-read", 4})
 	}
 	for i, child := range *children {
 		// Current declarations use category paths. Existing immutable releases
