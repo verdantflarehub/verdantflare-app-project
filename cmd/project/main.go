@@ -68,10 +68,10 @@ func run() error {
 	if err = migrations.CheckRuntime(ctx, db); err != nil {
 		return err
 	}
-	serviceToken, authorityToken := os.Getenv("PROJECT_SERVICE_TOKEN"), os.Getenv("PROJECT_AUTHORITY_TOKEN")
+	serviceToken := os.Getenv("PROJECT_SERVICE_TOKEN")
 	ownCoord, peerCoord := os.Getenv("PROJECT_COORD_TOKEN"), os.Getenv("WORLD_COORD_TOKEN")
 	seen := map[string]bool{}
-	for _, token := range []string{serviceToken, authorityToken, ownCoord, peerCoord, os.Getenv("WORLD_SERVICE_TOKEN"), os.Getenv("ARTIFACT_SERVICE_TOKEN")} {
+	for _, token := range []string{serviceToken, ownCoord, peerCoord, os.Getenv("WORLD_SERVICE_TOKEN"), os.Getenv("ARTIFACT_SERVICE_TOKEN")} {
 		if len(token) < 32 || strings.ContainsAny(token, " \r\n\t") || seen[token] {
 			return errors.New("independent credentials required")
 		}
@@ -101,11 +101,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	internal, err := svc.HTTPHandler(serviceToken, authorityToken)
+	internal, err := svc.HTTPHandler(serviceToken)
 	if err != nil {
 		return err
 	}
-	mcp, err := svc.MCPHandler(serviceToken, authorityToken)
+	mcp, err := svc.MCPHandler(serviceToken)
 	if err != nil {
 		return err
 	}
@@ -165,7 +165,7 @@ func run() error {
 	}
 	readAddr, readToken := os.Getenv("PROJECT_READ_LISTEN"), os.Getenv("PROJECT_READ_TOKEN")
 	if err = validateReadListener(addr, mcpAddr, readAddr, cert != "", readToken,
-		[]string{serviceToken, authorityToken, ownCoord, peerCoord, os.Getenv("WORLD_SERVICE_TOKEN"), os.Getenv("ARTIFACT_SERVICE_TOKEN")}); err != nil {
+		[]string{serviceToken, ownCoord, peerCoord, os.Getenv("WORLD_SERVICE_TOKEN"), os.Getenv("ARTIFACT_SERVICE_TOKEN")}); err != nil {
 		return err
 	}
 	if cert != "" {
@@ -203,7 +203,7 @@ func run() error {
 	}
 	var readServer *http.Server
 	if readAddr != "" {
-		readInternal, handlerErr := svc.HTTPHandler(readToken, authorityToken)
+		readInternal, handlerErr := svc.HTTPHandler(readToken)
 		if handlerErr != nil {
 			return handlerErr
 		}

@@ -28,7 +28,7 @@ func TestIndependentProjectRejectsForeignAuthorityAndRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"/internal/v1/world/register", "/internal/v1/world/get", "/internal/v1/world/references"} {
+	for _, path := range []string{"/internal/v1/artifact/authorize", "/internal/v1/world/register", "/internal/v1/world/get", "/internal/v1/world/references"} {
 		req := httptest.NewRequest("POST", path, bytes.NewBufferString("{}"))
 		req.Header.Set("Authorization", "Bearer "+token)
 		req.Header.Set("Content-Type", "application/json")

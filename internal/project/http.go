@@ -27,23 +27,15 @@ type StatusRequest struct {
 
 // HTTPHandler exposes only the internal service protocol, not a public identity
 // boundary. The Gateway must supply principals from a verified session.
-func (s *Service) HTTPHandler(serviceToken, authorityToken string) (http.Handler, error) {
-	if len(serviceToken) < 32 || strings.ContainsAny(serviceToken, " \r\n\t") || serviceToken == authorityToken {
+func (s *Service) HTTPHandler(serviceToken string, _ ...string) (http.Handler, error) {
+	if len(serviceToken) < 32 || strings.ContainsAny(serviceToken, " \r\n\t") {
 		return nil, ErrInvalid
-	}
-	auth, e := s.AuthorityHandler(authorityToken)
-	if e != nil {
-		return nil, e
 	}
 	expected := sha256.Sum256([]byte("Bearer " + serviceToken))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		if r.URL.Path == "/internal/v1/artifact/authorize" {
-			auth.ServeHTTP(w, r)
-			return
-		}
 		p := Principal{OrganizationID: r.Header.Get("X-Organization-Id"), SubjectID: r.Header.Get("X-User-Id"), RequestID: r.Header.Get("X-Request-Id")}
 		actual := sha256.Sum256([]byte(r.Header.Get("Authorization")))
 		for _, header := range []string{"Authorization", "X-Organization-Id", "X-User-Id", "X-Request-Id"} {
