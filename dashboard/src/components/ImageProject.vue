@@ -22,11 +22,11 @@ const format = (id: string) => {
  return extension === 'JPG' ? 'JPEG' : extension
 }
 const outputLabel = (id: string) => outputs(version.value).filter(f => format(f.file_id) === format(id)).length > 1 ? props.reader.file(id).path : format(id)
-const selectedOutput = ref(''), showReferences = ref(false), showProcess = ref(false), showPrompts = ref(false)
+const selectedOutput = ref(''), showReferences = ref(true), showProcess = ref(true), showPrompts = ref(true)
 const downloadBusy = ref(false), downloadError = ref('')
 let downloadSerial = 0
 const output = computed(() => outputs(version.value).find(f => f.file_id === selectedOutput.value) || outputs(version.value)[0])
-watch(() => version.value, () => { selectedOutput.value = ''; showReferences.value = false; showProcess.value = false; showPrompts.value = false; downloadSerial++; downloadBusy.value = false; downloadError.value = '' })
+watch(() => version.value, () => { selectedOutput.value = ''; showReferences.value = true; showProcess.value = true; showPrompts.value = true; downloadSerial++; downloadBusy.value = false; downloadError.value = '' })
 function chooseVersion(event: Event) { void router.replace(link({ version:(event.target as HTMLSelectElement).value, compare:undefined })) }
 function chooseWork(event: Event) { void router.replace(link({ item:(event.target as HTMLSelectElement).value, version:undefined, compare:undefined })) }
 function chooseOutput(event: Event) { selectedOutput.value = (event.target as HTMLSelectElement).value; downloadSerial++; downloadBusy.value = false; downloadError.value = '' }

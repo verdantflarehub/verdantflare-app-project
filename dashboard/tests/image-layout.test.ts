@@ -8,14 +8,17 @@ function reader() {
     file: (id: string) => ({ path: id }), media: async (id: string) => 'memory:' + id }
 }
 
-test('image detail starts with one final result, keeps all output choices, and defers reference media', async () => {
+test('image detail starts with one final result, keeps all output choices and preserves visible supporting content', async () => {
   const render = renderer(), html = await render.render('components/ImageProject.vue', { reader: reader(), tab: 'works' }, '/projects?item=poster')
-  assert.equal((html.match(/class="project-media image/g) || []).length, 1)
+  assert.equal((html.match(/class="project-media image/g) || []).length, 2)
   assert.match(html, /制作成果 · v2/)
   assert.match(html, /<option value="final-png"/)
   assert.match(html, /<option value="final-jpeg"/)
-  assert.match(html, /aria-expanded="false"[^>]*><span[^>]*>参考照片/)
-  assert.doesNotMatch(html, /aria-label="参考图/)
+  assert.match(html, /aria-expanded="true"[^>]*><span[^>]*>参考照片/)
+  assert.match(html, /aria-label="参考图/)
+  assert.match(html, /本版执行提示词/)
+  assert.match(html, /制作说明/)
+  assert.ok(html.indexOf('制作成果 · v2') < html.indexOf('参考照片'))
   assert.ok(html.indexOf('制作成果 · v2') < html.indexOf('制作版本'))
 })
 
@@ -39,7 +42,7 @@ test('explicit historical version changes result and comparison does not duplica
   const old = await render.render('components/ImageProject.vue', { reader: r, tab: 'works' }, '/projects?item=poster&version=v1')
   assert.match(old, /制作成果 · v1/); assert.doesNotMatch(old, /final-jpeg/)
   const compared = await render.render('components/ImageProject.vue', { reader: r, tab: 'works' }, '/projects?item=poster&compare=v1')
-  assert.equal((compared.match(/class="project-media image/g) || []).length, 3)
+  assert.equal((compared.match(/class="project-media image/g) || []).length, 4)
   const missing = await render.render('components/ImageProject.vue', { reader: r, tab: 'works' }, '/projects?item=poster&version=absent')
   assert.match(missing, /没有这个制作版本/); assert.doesNotMatch(missing, /制作成果 · v2/)
 })
