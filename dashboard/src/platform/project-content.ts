@@ -1,6 +1,7 @@
+import { parseImageContent, type ImageContent } from './image-content.ts'
 import { coverPosition, type CoverPosition } from './cover-position.ts'
 import { parseMusicProduction, type MusicProduction, type MusicGroup } from './music-production.ts'
-export type Category = 'character' | 'music' | 'video' | 'ai_short_drama' | 'creative_video'
+export type Category = 'image' | 'character' | 'music' | 'video' | 'ai_short_drama' | 'creative_video'
 export interface ContentRef { store_id: string; artifact_id: string; version_id: string }
 export interface ProjectItem { project_id: string; head_revision_id: string; name: string; category: string; updated_at?: string; can_write?: boolean; can_delete?: boolean; lifecycle_version?: number }
 export interface ProjectFile { file_id: string; path: string; role?: string; content_ref: ContentRef }
@@ -95,6 +96,7 @@ export interface CreativeVideoContent {
 export interface ProjectContent {
   schema_version: 1; kind: 'project-content'; category: Category; overview: string | null; cover_file_id: string | null
   cover_position?: CoverPosition; cover_placeholder?: boolean
+  image?: ImageContent
   character?: { name: string | null; portrait_file_id: string | null; portrait_prompt: string | null; sheet_file_id: string | null; sheet_prompt: string | null; fields: Field[]; extensions: Detail[] }
   music?: { artist: string | null; name: string | null; voice: { name: string | null; description: string | null; recordings: Detail[]; models: Detail[] }; songs: Detail[]; mvs: Detail[] }
   video?: { duration_seconds: number | null; aspect: string | null; output_file_id: string | null; outputs?: Detail[]; storyboards: Detail[]; cast: Cast[] }
@@ -108,7 +110,7 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{1
 export function projectContentView(project: ProjectOpen | null, content: ProjectContent | null): ProjectContent | null {
   if (content || !project) return content
   const category = project.manifest.category
-  if (!['character', 'music', 'video', 'ai_short_drama'].includes(category)) return null
+  if (!['image', 'character', 'music', 'video', 'ai_short_drama'].includes(category)) return null
   return parseProjectContent(JSON.stringify({ schema_version: 1, kind: 'project-content', category, [category]: category === 'ai_short_drama' ? { episodes: [] } : {} }), project)
 }
 
@@ -137,15 +139,16 @@ export function parseProjectContent(raw: string, project: ProjectOpen): ProjectC
   let json: unknown
   try { json = JSON.parse(raw) } catch { return invalid() }
   const d = object(json)
-  if (d.schema_version !== 1 || d.kind !== 'project-content' || !['character', 'music', 'video', 'ai_short_drama', 'creative_video'].includes(String(d.category)) || d.category !== project.manifest.category) invalid()
+  if (d.schema_version !== 1 || d.kind !== 'project-content' || !['image', 'character', 'music', 'video', 'ai_short_drama', 'creative_video'].includes(String(d.category)) || d.category !== project.manifest.category) invalid()
   const category = d.category as Category
-  if (['character', 'music', 'video', 'ai_short_drama', 'creative_video'].some(key => key !== category && d[key] != null)) invalid()
+  if (['image', 'character', 'music', 'video', 'ai_short_drama', 'creative_video'].some(key => key !== category && d[key] != null)) invalid()
   const result: ProjectContent = { schema_version: 1, kind: 'project-content', category, overview: text(d.overview), cover_file_id: reference(d.cover_file_id) }
   result.cover_position = coverPosition(d.cover_position)
   if (d.cover_placeholder !== undefined && typeof d.cover_placeholder !== 'boolean') invalid()
   result.cover_placeholder = d.cover_placeholder === true
   if (result.cover_placeholder && result.cover_file_id) invalid()
   const body = object(d[category])
+  if (category === 'image') result.image = parseImageContent(body, project)
   if (category === 'character') result.character = { name: text(body.name), portrait_file_id: reference(body.portrait_file_id), portrait_prompt: text(body.portrait_prompt), sheet_file_id: reference(body.sheet_file_id), sheet_prompt: text(body.sheet_prompt), fields: fields(body.fields), extensions: details(body.extensions) }
   if (category === 'music') {
     const voice = body.voice == null ? {} : object(body.voice)

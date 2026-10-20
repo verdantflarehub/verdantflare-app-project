@@ -33,8 +33,8 @@ test('navigation binds the same app release and digest without entering the fron
     assert.equal(navigation.entry.route, app === 'project' ? '' : '/')
     if (app === 'project') {
       assert.equal(navigation.schemaVersion, 2)
-      assert.deepEqual(navigation.entry.children.map((c: { title: string }) => c.title), ['角色设计', '音乐制作', '创意视频', '短剧制作'])
-      assert.deepEqual(navigation.entry.children.map((c: { route: string }) => c.route), ['/character', '/music', '/video', '/ai_short_drama'])
+      assert.deepEqual(navigation.entry.children.map((c: { title: string }) => c.title), ['角色设计', '音乐制作', '创意视频', '短剧制作', '图像创作'])
+      assert.deepEqual(navigation.entry.children.map((c: { route: string }) => c.route), ['/character', '/music', '/video', '/ai_short_drama', '/image'])
     }
     assert.equal(Object.hasOwn(JSON.parse(result.index.toString()).files, 'navigation-declaration.json'), false)
   }

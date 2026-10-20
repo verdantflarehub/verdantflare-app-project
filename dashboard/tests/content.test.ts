@@ -46,3 +46,26 @@ test('video output versions are optional and reject files outside the fixed revi
   assert.throws(() => parse([{ ...version, result_file_ids: [id(99)] }]), /当前项目修订/)
   assert.throws(() => parse([version, version]), /格式/)
 })
+
+
+test('image works keep versions and fixed file references', () => {
+ const work: ProjectOpen = { ...project, manifest: { ...project.manifest, category: 'image' } }
+ const version = { key:'v1', label:'First', parent_version_key:null, change_note:'Initial', file_refs:[{file_id:id(3),content_ref:project.manifest.files[0].content_ref,purpose:'output'}],reference_file_ids:[id(3)],prompt_file_ids:[id(3)] }
+ const item = {key:'poster',title:'静水',display_version_key:'v1',versions:[version]}
+ const body = {schema_version:1,kind:'project-content',category:'image',image:{works:[item]}}
+ const parse = (b:unknown) => parseProjectContent(JSON.stringify(b),work)
+ assert.equal(parse(body).image?.works[0].versions[0].file_refs[0].file_id,id(3))
+ for(const mutate of [
+  (b:any)=>b.image.works.push(b.image.works[0]),
+  (b:any)=>b.image.works[0].versions.push(b.image.works[0].versions[0]),
+  (b:any)=>b.image.works[0].display_version_key='missing',
+  (b:any)=>b.image.works[0].versions[0].parent_version_key='v1',
+  (b:any)=>b.image.works[0].versions[0].parent_version_key='missing',
+  (b:any)=>b.image.works[0].versions[0].file_refs[0].content_ref.version_id=id(99),
+  (b:any)=>b.image.works[0].versions[0].prompt_file_ids=[id(99)],
+  (b:any)=>b.image.works[0].versions[0].file_refs[0].purpose='record',
+  (b:any)=>b.image.works[0].versions[0].reference_file_ids=[id(3),id(3)],
+  (b:any)=>b.character={}
+ ]) {const b=structuredClone(body);mutate(b);assert.throws(()=>parse(b))}
+ assert.equal(parse({...body,image:{}}).image?.works.length,0)
+})

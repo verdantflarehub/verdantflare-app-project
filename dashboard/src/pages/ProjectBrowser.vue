@@ -9,6 +9,7 @@ import MusicDetail from '../components/MusicDetail.vue'
 import MusicCards from '../components/MusicCards.vue'
 import { musicReturnRoute } from '../platform/music-production'
 import ProjectPrompt from '../components/ProjectPrompt.vue'
+import ImageProject from '../components/ImageProject.vue'
 import ProjectCover from '../components/ProjectCover.vue'
 import { useHost } from '../platform/host'
 import ShortDramaProject from '../components/drama/ShortDramaProject.vue'
@@ -60,6 +61,7 @@ const items = ref<ProjectItem[]>([]), listLoading = ref(false), listError = ref(
 let request = 0, listRequest = 0, alive = true, signedOut = false
 const project = computed(() => reader.value?.project), content = computed(() => projectContentView(project.value || null, reader.value?.content || null))
 const historical = computed(() => !!project.value?.head_revision_id && project.value.revision_id !== project.value.head_revision_id)
+const image = computed(() => content.value?.image)
 const character = computed(() => content.value?.character), music = computed(() => content.value?.music), video = computed(() => content.value?.video), drama = computed(() => content.value?.ai_short_drama), creative = computed(() => content.value?.creative_video)
 const tabs = computed(() => projectMenus(project.value?.manifest.category || ''))
 const activeTab = computed(() => tabs.value.find(t => t.key === businessKey(project.value?.manifest.category || '', query('tab'), query('kind'))) || tabs.value[0])
@@ -91,11 +93,11 @@ const objectTitle = computed(() => query('file') ? project.value?.manifest.files
   : query('deliverable') ? drama.value?.deliverables.find(d => d.key === query('deliverable'))?.title || '成果详情'
   : query('continuity') ? '连续性详情'
   : query('item') && activeTab.value?.key === 'cast' ? video.value?.cast.find(c => c.key === query('item'))?.name || '片中角色详情'
-  : detail.value?.title)
+  : image.value?.works.find(w => w.key === query('item'))?.title || detail.value?.title)
 const filtered = computed(() => selectProjects(items.value, search.value, sort.value))
 const shown = computed(() => filtered.value.slice(0, visibleCount.value))
 const displayTime = (time?: string) => time && Number.isFinite(Date.parse(time)) ? new Date(time).toLocaleString('zh-CN') : '更新时间未知'
-const resultKind = computed(() => activeTab.value?.key === 'extensions' ? 'image' : ['songs', 'voice'].includes(activeTab.value?.key || '') ? 'audio' : 'video')
+const resultKind = computed(() => ['extensions', 'works'].includes(activeTab.value?.key || '') ? 'image' : ['songs', 'voice'].includes(activeTab.value?.key || '') ? 'audio' : 'video')
 const fromProject = computed(() => isProjectID(query('from')) && isProjectID(query('fromRevision')) ? { id: query('from'), revision: query('fromRevision'), name: query('fromName') || '创意视频' } : null)
 const fromSourceReference = computed(() => /^project:(cast|music|production):[^\u0000-\u001f\u007f]+$/.test(query('fromReference')) ? query('fromReference') : undefined)
 const value = (text?: string | null) => text?.trim() ? text : '未填写'
@@ -294,6 +296,7 @@ onBeforeUnmount(() => { closeEdit(); alive = false; request++; listRequest++; na
         <div v-else-if="!content" class="state">暂无业务内容。</div>
         <ShortDramaProject v-else-if="drama" :reader="reader" :tab="activeTab?.key || 'script'" />
         <CreativeVideoProject v-else-if="creative" :reader="reader" :tab="activeTab?.key || 'overview'" @saved="creativeSaved" />
+        <ImageProject v-else-if="image" :reader="reader" :tab="activeTab?.key || 'works'" />
         <ShortVideoProject v-else-if="video" :reader="reader" :tab="activeTab?.key || 'storyboards'" />
         <div v-else-if="query('item') && !detail" class="state">当前项目修订中没有这项内容。</div>
         <MusicDetail v-else-if="detail && music && (activeTab?.key === 'voice' || activeTab?.key === 'songs' || activeTab?.key === 'mvs')" :key="project.revision_id + ':' + activeTab.key + ':' + detail.key" :reader="reader" :detail="detail" :group="activeTab.key" @saved="revision => { listCache.clear(); router.replace(link({ revision, version: undefined })) }" />
@@ -315,7 +318,7 @@ onBeforeUnmount(() => { closeEdit(); alive = false; request++; listRequest++; na
             <section class="panel"><h2>人声模型</h2><p v-if="!music.voice.models.length" class="muted">未添加人声模型</p><article v-for="model in music.voice.models" :key="model.key" class="voice-item"><h3><RouterLink :to="link({ tab: 'voice', item: model.key })">{{ model.title }} · 查看版本 →</RouterLink></h3><p class="prose">{{ value(model.overview) }}</p><dl v-if="model.fields.length" class="fields"><template v-for="(field, i) in model.fields" :key="i"><dt>{{ field.label }}</dt><dd>{{ value(field.value) }}</dd></template></dl><ProjectMedia v-for="id in model.file_ids" :key="id" :reader="reader" :file-id="id" kind="file" :label="reader.file(id).path" /><p v-if="!model.file_ids.length" class="muted">未添加模型文件</p><ProjectMedia v-for="id in model.result_file_ids" :key="id" :reader="reader" :file-id="id" kind="audio" :label="`${model.title}试听`" /></article></section>
           </template>
           <template v-else>
-            <p v-if="music" class="prose">{{ value(content.overview) }}</p>
+            <p v-if="music || image" class="prose">{{ value(content.overview) }}</p>
             <div class="list-tools"><input type="search" :value="query('find')" :aria-label="'搜索' + activeTab?.label" placeholder="搜索名称或概述" @compositionstart="isImeComposing = true" @compositionend="onBusinessFindCompositionEnd" @keydown="onSearchKeydown" @input="onBusinessFindInput"><button v-if="character && project.can_write && !historical && activeTab?.key === 'extensions'" class="btn" @click="editCurrent('extension')">新建扩展</button></div><div v-if="!visibleEntries.length" class="state">暂无{{ activeTab?.label }}内容。</div>
             <MusicCards v-if="music && (activeTab?.key === 'songs' || activeTab?.key === 'mvs')" :reader="reader" :entries="visibleEntries" :group="activeTab.key" /><div v-else class="cards project-grid" data-roving-grid="true" @keydown="onGridKeydown"><RouterLink v-for="(entry, index) in visibleEntries" :key="entry.key" class="project-card roving-item" :tabindex="index === activeCardIndex ? 0 : -1" :to="link({ tab: activeTab?.key, item: entry.key })" @focus="activeCardIndex = index"><ProjectMedia v-if="entry.image_file_id || activeTab?.key !== 'songs'" :reader="reader" :file-id="entry.image_file_id" kind="image" :label="entry.title" thumbnail /><div v-else class="song-glyph" aria-hidden="true">♫</div><div class="card-text"><small v-if="activeTab?.key === 'storyboards'" class="tabular-nums">{{ String(index + 1).padStart(2, '0') }} · {{ duration(entry.duration_seconds) }}</small><h2>{{ entry.title }}</h2><p>{{ value(entry.overview) }}</p></div></RouterLink></div>
           </template>

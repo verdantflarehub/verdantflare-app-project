@@ -9,13 +9,14 @@ import type { AppSDK, Json, Lifecycle } from '../src/platform/types.ts'
 
 const id = (n: number) => `0199b501-0000-7000-8000-${n.toString(16).padStart(12, '0')}`
 test('new projects expose empty typed business views without creating or replacing their documents', () => {
-  for (const category of ['character', 'music', 'video', 'ai_short_drama']) {
+  for (const category of ['image', 'character', 'music', 'video', 'ai_short_drama']) {
     const project: ProjectOpen = { project_id: id(1), revision_id: id(2), manifest: { name: '新项目', category, files: [], domain_documents: [] } }
     const original = structuredClone(project)
     const view = projectContentView(project, null)!
     assert.equal(view.category, category)
     assert.equal(view.cover_file_id, null)
     assert.equal(view.overview, null)
+    if (category === 'image') assert.deepEqual(view.image?.works, [])
     if (category === 'character') assert.deepEqual(view.character?.extensions, [])
     if (category === 'video') assert.deepEqual(view.video?.cast, [])
     if (category === 'music') assert.deepEqual(view.music?.voice.models, [])
@@ -135,4 +136,13 @@ test('revision history follows real parents, rejects foreign or malformed identi
   let active = true, appended = false
   await readProjectHistory(id(10), id(12), async () => { active = false; return revision(12, '') }, () => active, () => { appended = true })
   assert.equal(appended, false)
+})
+
+
+test('image projects retain identity and expose works, materials and shared management', async () => {
+  assert.equal(projectCategories.find(c => c.key === 'image')?.label, '图像创作')
+  assert.deepEqual(projectMenus('image').map(m => m.key), ['works', 'image_materials', 'files', 'revisions', 'runs', 'references'])
+  assert.equal(businessKey('image', ''), 'works')
+  const item = { project_id: id(1), head_revision_id: id(2), category: 'image', name: '静水' }
+  assert.deepEqual(await collectProjects('image', async args => { assert.equal(args.category, 'image'); return { items: [item] } }, () => true), [item])
 })

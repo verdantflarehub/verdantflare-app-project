@@ -1,5 +1,5 @@
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
-const projectCategories = new Set(['character', 'music', 'video', 'ai_short_drama', 'creative_video'])
+const projectCategories = new Set(['image', 'character', 'music', 'video', 'ai_short_drama', 'creative_video'])
 type Domain = 'project' | 'world'
 export interface AppTarget { appId: Domain | 'image-mcp' | 'video-mcp'; path: string }
 export function nativeRunTarget(service: string, run: string): AppTarget | null {

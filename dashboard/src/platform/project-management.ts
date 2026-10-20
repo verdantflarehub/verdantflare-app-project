@@ -6,12 +6,14 @@ export const projectCategories = [
   { key: 'video', label: '创意视频', description: '管理故事板、片中角色和成片。' },
   { key: 'ai_short_drama', label: '短剧制作', description: '管理剧本、人物设定、镜头制作与交付。' },
   { key: 'creative_video', label: '创意视频制作', description: '管理任务书、创意分镜、剪辑版本与交付审核。' },
+  { key: 'image', label: '图像创作', description: '管理海报、插画、摄影改图与风格化图像作品。' },
 ] as const
 export const commonMenus = [
   { key: 'files', label: '文件' }, { key: 'revisions', label: '版本' },
   { key: 'runs', label: '运行' }, { key: 'references', label: '资产引用' },
 ]
 const typeMenus: Record<Category, { key: string; label: string }[]> = {
+  image: [{ key: 'works', label: '图像作品' }, { key: 'image_materials', label: '参考与制作' }],
   character: [{ key: 'setting', label: '角色设定' }, { key: 'extensions', label: '角色扩展' }],
   music: [{ key: 'voice', label: '人声训练' }, { key: 'songs', label: '歌曲创作' }, { key: 'mvs', label: 'MV创作' }],
   video: [{ key: 'storyboards', label: '故事板' }, { key: 'cast', label: '角色创作' }],

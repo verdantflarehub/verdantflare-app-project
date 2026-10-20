@@ -19,6 +19,7 @@
       },
       "category": {
         "enum": [
+          "image",
           "character",
           "music",
           "video",
@@ -62,6 +63,9 @@
       "cover_placeholder": {
         "type": "boolean"
       },
+      "image": {
+        "$ref": "#/$defs/image"
+      },
       "character": {
         "$ref": "#/$defs/character"
       },
@@ -102,9 +106,40 @@
     "oneOf": [
       {
         "required": [
+          "image"
+        ],
+        "properties": {
+          "category": {
+            "const": "image"
+          },
+          "image": {
+            "type": "object"
+          },
+          "character": {
+            "type": "null"
+          },
+          "music": {
+            "type": "null"
+          },
+          "video": {
+            "type": "null"
+          },
+          "ai_short_drama": {
+            "type": "null"
+          },
+          "creative_video": {
+            "type": "null"
+          }
+        }
+      },
+      {
+        "required": [
           "character"
         ],
         "properties": {
+          "image": {
+            "type": "null"
+          },
           "category": {
             "const": "character"
           },
@@ -130,6 +165,9 @@
           "music"
         ],
         "properties": {
+          "image": {
+            "type": "null"
+          },
           "category": {
             "const": "music"
           },
@@ -155,6 +193,9 @@
           "video"
         ],
         "properties": {
+          "image": {
+            "type": "null"
+          },
           "category": {
             "const": "video"
           },
@@ -180,6 +221,9 @@
           "ai_short_drama"
         ],
         "properties": {
+          "image": {
+            "type": "null"
+          },
           "category": {
             "const": "ai_short_drama"
           },
@@ -205,6 +249,9 @@
           "creative_video"
         ],
         "properties": {
+          "image": {
+            "type": "null"
+          },
           "category": {
             "const": "creative_video"
           },
@@ -1737,6 +1784,176 @@
           ]
         }
       },
+      "imageKey": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[a-zA-Z0-9_-]+$"
+      },
+      "imageName": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256,
+        "pattern": "\\S"
+      },
+      "imageReferences": {
+        "type": "array",
+        "maxItems": 1000,
+        "uniqueItems": true,
+        "items": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "imageFile": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "file_id",
+          "content_ref",
+          "purpose"
+        ],
+        "properties": {
+          "file_id": {
+            "$ref": "#/$defs/id"
+          },
+          "content_ref": {
+            "$ref": "station://contracts/v2/content-ref"
+          },
+          "purpose": {
+            "enum": [
+              "output",
+              "intermediate",
+              "record"
+            ]
+          }
+        }
+      },
+      "imageVersion": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "label",
+          "parent_version_key",
+          "change_note",
+          "file_refs",
+          "reference_file_ids",
+          "prompt_file_ids"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/$defs/imageKey"
+          },
+          "label": {
+            "$ref": "#/$defs/imageName"
+          },
+          "parent_version_key": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/imageKey"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "change_note": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16000,
+            "pattern": "\\S"
+          },
+          "file_refs": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1000,
+            "uniqueItems": true,
+            "items": {
+              "$ref": "#/$defs/imageFile"
+            },
+            "contains": {
+              "type": "object",
+              "required": [
+                "purpose"
+              ],
+              "properties": {
+                "purpose": {
+                  "const": "output"
+                }
+              }
+            }
+          },
+          "reference_file_ids": {
+            "$ref": "#/$defs/imageReferences"
+          },
+          "prompt_file_ids": {
+            "$ref": "#/$defs/imageReferences"
+          }
+        }
+      },
+      "imageWork": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "title",
+          "versions"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/$defs/imageKey"
+          },
+          "title": {
+            "$ref": "#/$defs/imageName"
+          },
+          "overview": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 16000
+          },
+          "reference_file_ids": {
+            "$ref": "#/$defs/imageReferences"
+          },
+          "display_version_key": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/imageKey"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "versions": {
+            "type": "array",
+            "maxItems": 1000,
+            "items": {
+              "$ref": "#/$defs/imageVersion"
+            }
+          }
+        }
+      },
+      "image": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "works": {
+            "type": "array",
+            "maxItems": 1000,
+            "items": {
+              "$ref": "#/$defs/imageWork"
+            }
+          },
+          "reference_file_ids": {
+            "$ref": "#/$defs/imageReferences"
+          },
+          "process_file_ids": {
+            "$ref": "#/$defs/imageReferences"
+          }
+        }
+      },
       "character": {
         "type": [
           "object",
@@ -2761,7 +2978,6 @@
     "additionalProperties": false,
     "required": [
       "commit_id",
-      "source_project_id",
       "source_revision_id",
       "file_ids",
       "name",
@@ -2814,6 +3030,9 @@
       },
       "depends_on": {
         "$ref": "asset-version-manifest.schema.json#/properties/depends_on"
+      },
+      "source_draft_id": {
+        "$ref": "content-ref.schema.json#/properties/store_id"
       }
     },
     "dependentRequired": {
@@ -2823,7 +3042,29 @@
       "expected_asset_version_id": [
         "asset_id"
       ]
-    }
+    },
+    "oneOf": [
+      {
+        "required": [
+          "source_project_id"
+        ],
+        "not": {
+          "required": [
+            "source_draft_id"
+          ]
+        }
+      },
+      {
+        "required": [
+          "source_draft_id"
+        ],
+        "not": {
+          "required": [
+            "source_project_id"
+          ]
+        }
+      }
+    ]
   },
   "station://contracts/v2/asset-version-manifest": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3101,7 +3342,486 @@
         "$ref": "content-ref.schema.json"
       },
       "manifest": {
-        "$ref": "asset-version-manifest.schema.json"
+        "oneOf": [
+          {
+            "$ref": "asset-version-manifest.schema.json"
+          },
+          {
+            "$ref": "asset-version-manifest-v2.schema.json"
+          }
+        ]
+      }
+    }
+  },
+  "station://contracts/v2/asset-version-manifest-v2": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "station://contracts/v2/asset-version-manifest-v2",
+    "title": "AssetVersionManifestV2",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "schema_version",
+      "kind",
+      "asset_id",
+      "name",
+      "asset_type",
+      "subjects",
+      "files",
+      "source",
+      "depends_on",
+      "domain_documents"
+    ],
+    "properties": {
+      "schema_version": {
+        "const": 2
+      },
+      "kind": {
+        "$ref": "asset-version-manifest.schema.json#/properties/kind"
+      },
+      "asset_id": {
+        "$ref": "asset-version-manifest.schema.json#/properties/asset_id"
+      },
+      "name": {
+        "$ref": "asset-version-manifest.schema.json#/properties/name"
+      },
+      "asset_type": {
+        "$ref": "asset-version-manifest.schema.json#/properties/asset_type"
+      },
+      "subjects": {
+        "$ref": "asset-version-manifest.schema.json#/properties/subjects"
+      },
+      "files": {
+        "$ref": "asset-version-manifest.schema.json#/properties/files"
+      },
+      "source": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "draft_id",
+          "draft_revision_id",
+          "relation"
+        ],
+        "properties": {
+          "kind": {
+            "const": "world_draft"
+          },
+          "draft_id": {
+            "$ref": "content-ref.schema.json#/properties/store_id"
+          },
+          "draft_revision_id": {
+            "$ref": "content-ref.schema.json#/properties/store_id"
+          },
+          "relation": {
+            "$ref": "asset-version-manifest.schema.json#/properties/source/properties/relation"
+          },
+          "review_file_id": {
+            "$ref": "content-ref.schema.json#/properties/store_id"
+          }
+        }
+      },
+      "depends_on": {
+        "$ref": "asset-version-manifest.schema.json#/properties/depends_on"
+      },
+      "extensions": {
+        "$ref": "asset-version-manifest.schema.json#/properties/extensions"
+      },
+      "domain_documents": {
+        "$ref": "world-draft-manifest.schema.json#/properties/domain_documents"
+      }
+    }
+  },
+  "station://contracts/v2/world-draft-manifest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "station://contracts/v2/world-draft-manifest",
+    "title": "WorldDraftManifest",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "schema_version",
+      "kind",
+      "draft_id",
+      "purpose",
+      "name",
+      "subjects",
+      "files",
+      "domain_documents",
+      "source_refs",
+      "asset_refs",
+      "run_refs"
+    ],
+    "properties": {
+      "schema_version": {
+        "const": 1
+      },
+      "kind": {
+        "const": "world-draft"
+      },
+      "draft_id": {
+        "$ref": "content-ref.schema.json#/properties/store_id"
+      },
+      "purpose": {
+        "enum": [
+          "collection",
+          "learning",
+          "creation"
+        ]
+      },
+      "name": {
+        "$ref": "asset-version-manifest.schema.json#/properties/name"
+      },
+      "subjects": {
+        "$ref": "asset-version-manifest.schema.json#/properties/subjects"
+      },
+      "files": {
+        "type": "array",
+        "minItems": 0,
+        "maxItems": 10000,
+        "items": {
+          "$ref": "asset-version-manifest.schema.json#/$defs/file"
+        }
+      },
+      "domain_documents": {
+        "type": "array",
+        "minItems": 0,
+        "maxItems": 256,
+        "items": {
+          "$ref": "project-manifest.schema.json#/properties/domain_documents/items"
+        }
+      },
+      "source_refs": {
+        "type": "array",
+        "minItems": 0,
+        "maxItems": 1000,
+        "items": {
+          "$ref": "#/$defs/sourceRef"
+        }
+      },
+      "asset_refs": {
+        "type": "array",
+        "minItems": 0,
+        "maxItems": 10000,
+        "items": {
+          "$ref": "asset-version-manifest.schema.json#/$defs/assetRef"
+        }
+      },
+      "run_refs": {
+        "type": "array",
+        "minItems": 0,
+        "maxItems": 1000,
+        "items": {
+          "$ref": "project-manifest.schema.json#/properties/run_refs/items"
+        }
+      }
+    },
+    "$defs": {
+      "sourceRef": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "draft_id",
+              "revision_id",
+              "file_id",
+              "purpose"
+            ],
+            "properties": {
+              "kind": {
+                "const": "world_draft"
+              },
+              "draft_id": {
+                "$ref": "content-ref.schema.json#/properties/store_id"
+              },
+              "revision_id": {
+                "$ref": "content-ref.schema.json#/properties/store_id"
+              },
+              "file_id": {
+                "$ref": "content-ref.schema.json#/properties/store_id"
+              },
+              "purpose": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "object_key": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "project_id",
+              "revision_id",
+              "file_id",
+              "purpose"
+            ],
+            "properties": {
+              "kind": {
+                "const": "project"
+              },
+              "project_id": {
+                "$ref": "content-ref.schema.json#/properties/store_id"
+              },
+              "revision_id": {
+                "$ref": "content-ref.schema.json#/properties/store_id"
+              },
+              "file_id": {
+                "$ref": "content-ref.schema.json#/properties/store_id"
+              },
+              "purpose": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "object_key": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "asset_id",
+              "asset_version_id",
+              "file_id",
+              "purpose"
+            ],
+            "properties": {
+              "kind": {
+                "const": "asset"
+              },
+              "asset_id": {
+                "$ref": "content-ref.schema.json#/properties/store_id"
+              },
+              "asset_version_id": {
+                "$ref": "content-ref.schema.json#/properties/store_id"
+              },
+              "file_id": {
+                "$ref": "content-ref.schema.json#/properties/store_id"
+              },
+              "purpose": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "object_key": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$"
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "station://contracts/v2/project-manifest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "station://contracts/v2/project-manifest",
+    "title": "ProjectManifest",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "schema_version",
+      "kind",
+      "project_id",
+      "name",
+      "category",
+      "status",
+      "entry_document_id",
+      "files",
+      "selections",
+      "asset_refs",
+      "run_refs",
+      "domain_documents"
+    ],
+    "properties": {
+      "schema_version": {
+        "const": 1
+      },
+      "kind": {
+        "const": "project"
+      },
+      "project_id": {
+        "$ref": "#/$defs/id"
+      },
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "category": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+      },
+      "status": {
+        "enum": [
+          "draft",
+          "active",
+          "paused",
+          "acceptance",
+          "completed",
+          "archived"
+        ]
+      },
+      "entry_document_id": {
+        "$ref": "#/$defs/id"
+      },
+      "files": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "$ref": "#/$defs/file"
+        }
+      },
+      "selections": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "purpose",
+            "file_ids"
+          ],
+          "properties": {
+            "purpose": {
+              "type": "string",
+              "minLength": 1
+            },
+            "file_ids": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/id"
+              }
+            }
+          }
+        }
+      },
+      "asset_refs": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/assetRef"
+        }
+      },
+      "run_refs": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "service_id",
+            "run_id"
+          ],
+          "properties": {
+            "service_id": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            },
+            "run_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          }
+        }
+      },
+      "domain_documents": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "document_type",
+            "file_id"
+          ],
+          "properties": {
+            "document_type": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            },
+            "file_id": {
+              "$ref": "#/$defs/id"
+            }
+          }
+        }
+      },
+      "extensions": {
+        "type": "object",
+        "propertyNames": {
+          "pattern": "^[a-z][a-z0-9_-]*\\.[a-z][a-z0-9_.-]*$"
+        }
+      }
+    },
+    "$defs": {
+      "id": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+      },
+      "relativePath": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1024,
+        "pattern": "^(?!/)(?!.*//)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!\\.vf(?:/|$))(?!.*[. ](?:/|$))(?!.*\\/$)[^\\u0000-\\u001f\\u007f\\\\<>:\"|?*]+$"
+      },
+      "contentRef": {
+        "$ref": "content-ref.schema.json"
+      },
+      "file": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "file_id",
+          "path",
+          "role",
+          "content_ref"
+        ],
+        "properties": {
+          "file_id": {
+            "$ref": "#/$defs/id"
+          },
+          "path": {
+            "$ref": "#/$defs/relativePath"
+          },
+          "role": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "content_ref": {
+            "$ref": "#/$defs/contentRef"
+          }
+        }
+      },
+      "assetRef": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "asset_id",
+          "asset_version_id",
+          "purpose"
+        ],
+        "properties": {
+          "asset_id": {
+            "$ref": "#/$defs/id"
+          },
+          "asset_version_id": {
+            "$ref": "#/$defs/id"
+          },
+          "purpose": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        }
       }
     }
   },

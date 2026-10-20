@@ -501,6 +501,9 @@ func (s *Service) checkContents(ctx context.Context, p Principal, m Manifest, ba
 	if err := s.checkDramaRevision(ctx, p, m, base, dramaData); err != nil {
 		return nil, err
 	}
+	if err := s.checkImageRevision(ctx, p, m, base, dramaData); err != nil {
+		return nil, err
+	}
 	if err := s.checkCreativeRevision(ctx, p, m, base, dramaData); err != nil {
 		return nil, err
 	}

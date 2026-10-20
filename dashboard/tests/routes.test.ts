@@ -11,7 +11,7 @@ test('legacy bookmarks preserve the fixed revision, filters and app route', () =
   assert.deepEqual(legacyStudioTarget('/projects?mode=world&view=files&asset=' + a), { appId: 'world', path: '/?asset=' + a })
   assert.equal(canonicalRoute('project', '/use-asset?asset=' + a + '&version=' + b), '/use-asset?asset=' + a + '&version=' + b)
   assert.equal(canonicalRoute('project', '/?category=music'), '/projects?category=music')
-  for (const category of ['character', 'music', 'video', 'ai_short_drama', 'creative_video']) assert.equal(canonicalRoute('project', '/' + category), '/projects?category=' + category)
+  for (const category of ['image', 'character', 'music', 'video', 'ai_short_drama', 'creative_video']) assert.equal(canonicalRoute('project', '/' + category), '/projects?category=' + category)
 })
 test('cross application targets contain only app identity and fixed business version', () => {
   assert.deepEqual(projectTarget(a, b), { appId: 'project', path: `/projects?project=${a}&revision=${b}` })
