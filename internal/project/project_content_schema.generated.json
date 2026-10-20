@@ -2116,7 +2116,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "station://contracts/drafts/creative-video-project-content",
     "title": "CreativeVideoProjectContent (review draft)",
-    "description": "CV-1 approved shape for creative_video, with fixed reuse of existing Music project content and no music generation. Development service validation is in progress; this draft is not deployed. Cross-object references, permissions, immutable versions and release gates require service validation.",
+    "description": "CV-1 approved shape for creative_video, with fixed reuse of existing Music project content and no music generation. The implementing plan was shelved on 2026-10-19; this draft is not deployed and does not authorize further implementation.",
     "type": "object",
     "additionalProperties": false,
     "required": [
