@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ProjectReader, readerError } from '../platform/project-reader'
 import { previewImage, closePreview } from '../platform/media-preview'
-const props = withDefaults(defineProps<{ reader: ProjectReader; fileId?: string | null; kind: 'image' | 'audio' | 'video' | 'file'; label: string; thumbnail?: boolean; objectPosition?: { x: number; y: number } }>(), { thumbnail: false })
+const props = withDefaults(defineProps<{ reader: ProjectReader; fileId?: string | null; kind: 'image' | 'audio' | 'video' | 'file'; label: string; thumbnail?: boolean; contain?: boolean; objectPosition?: { x: number; y: number } }>(), { thumbnail: false, contain: false })
 const source = ref(''), error = ref(''), busy = ref(false), downloadPath = ref('')
 const viewer = ref<HTMLDialogElement | null>(null)
 const zoomScale = ref(1), zoomTx = ref(0), zoomTy = ref(0), isDragging = ref(false)
@@ -89,7 +89,7 @@ onBeforeUnmount(() => { generation++; closeLightbox() })
 </script>
 
 <template>
-  <div class="project-media" :class="[kind, { thumbnail }]" :aria-label="label">
+  <div class="project-media" :class="[kind, { thumbnail, contain }]" :aria-label="label">
     <p v-if="previewError" role="alert">{{ previewError }}</p>
     <div v-if="kind === 'audio' && (source || fileId)" class="waveform-strip" data-gamma="0.7" aria-hidden="true">
       <span v-for="(barHeight, idx) in waveformBars" :key="idx" class="waveform-bar" :style="{ height: `${barHeight}px` }" />
@@ -131,6 +131,7 @@ onBeforeUnmount(() => { generation++; closeLightbox() })
 img { display: block; width: 100%; height: auto; }
 .thumbnail { aspect-ratio: 16 / 10; }
 .thumbnail img { width: 100%; height: 100%; object-fit: cover; object-position: center top; transition: transform 280ms var(--vf-ease-spring, cubic-bezier(0.22, 1, 0.36, 1)); }
+.thumbnail.contain img { object-fit: contain; padding: 12px; }
 .media-state { min-height: 72px; display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; padding: 16px; color: var(--muted); overflow-wrap: anywhere; }
 .image .media-state, .video .media-state { min-height: 180px; height: 100%; }
 .waveform-strip { display: flex; align-items: center; gap: 2px; height: 28px; padding: 4px 10px; border-radius: 8px; background: var(--subtle); border: 0.5px solid var(--vf-hairline-outer, var(--line)); margin-bottom: 6px; }

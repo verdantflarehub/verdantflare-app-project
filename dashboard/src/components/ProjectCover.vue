@@ -56,6 +56,7 @@ onBeforeUnmount(() => {
       kind="image"
       :label="project.name"
       thumbnail
+      :contain="project.category === 'image'"
       :object-position="position"
     />
     <span v-else aria-hidden="true">{{
