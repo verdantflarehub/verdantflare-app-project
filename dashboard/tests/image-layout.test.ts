@@ -12,11 +12,26 @@ test('image detail starts with one final result, keeps all output choices, and d
   const render = renderer(), html = await render.render('components/ImageProject.vue', { reader: reader(), tab: 'works' }, '/projects?item=poster')
   assert.equal((html.match(/class="project-media image/g) || []).length, 1)
   assert.match(html, /制作成果 · v2/)
-  assert.match(html, /aria-pressed="true"[^>]*>final-png/)
-  assert.match(html, /aria-pressed="false"[^>]*>final-jpeg/)
-  assert.match(html, /aria-expanded="false"[^>]*>展开参考与对照/)
+  assert.match(html, /<option value="final-png"/)
+  assert.match(html, /<option value="final-jpeg"/)
+  assert.match(html, /aria-expanded="false"[^>]*><span[^>]*>参考照片/)
   assert.doesNotMatch(html, /aria-label="参考图/)
   assert.ok(html.indexOf('制作成果 · v2') < html.indexOf('制作版本'))
+})
+
+test('project landing directly renders its result without an intermediate work card or duplicate navigation', async () => {
+  const r = reader(), render = renderer()
+  const html = await render.render('components/ImageProject.vue', { reader: r, tab: 'works' })
+  assert.match(html, /制作成果 · v2/)
+  assert.doesNotMatch(html, /project-card|查看作品与版本|output-choice/)
+  assert.match(html, /下载图片/)
+  assert.equal((html.match(/<select/g) || []).length, 2)
+  const second = structuredClone(r.content.image.works[0]); second.key = 'other'; second.title = '另一件作品'
+  r.content.image.works.push(second)
+  const multi = await render.render('components/ImageProject.vue', { reader: r, tab: 'works' })
+  assert.match(multi, /另一件作品/); assert.equal((multi.match(/<select/g) || []).length, 3)
+  const missing = await render.render('components/ImageProject.vue', { reader: r, tab: 'works' }, '/projects?item=missing')
+  assert.match(missing, /没有这件作品/); assert.doesNotMatch(missing, /制作成果 · v2/)
 })
 
 test('explicit historical version changes result and comparison does not duplicate output formats', async () => {
