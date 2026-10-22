@@ -28,6 +28,8 @@ function select(field: string, value: string) { void router.push({ path: route.p
   </section>
 </template>
 <style scoped>
+.thumb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; align-items: start; }
+.thumb-grid :deep(.drama-file) { min-width: 0; min-height: 0; }
 .version-grid :deep(.image-open img) { max-height: 570px; object-fit: contain; }
 .version-grid.comparing :deep(.image-open img) { height: 260px; object-fit: contain; }
 .version-history { border-top: 1px solid var(--line); margin-top: 22px; padding-top: 16px; font-size: 13px; }

@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ProjectReader, readerError } from '../platform/project-reader'
 import { previewImage, closePreview } from '../platform/media-preview'
-const props = withDefaults(defineProps<{ reader: ProjectReader; fileId?: string | null; kind: 'image' | 'audio' | 'video' | 'file'; label: string; thumbnail?: boolean; contain?: boolean; objectPosition?: { x: number; y: number } }>(), { thumbnail: false, contain: false })
+const props = withDefaults(defineProps<{ reader: ProjectReader; fileId?: string | null; kind: 'image' | 'audio' | 'video' | 'file'; label: string; thumbnail?: boolean; contain?: boolean; edge?: 320 | 640; objectPosition?: { x: number; y: number } }>(), { thumbnail: false, contain: false, edge: 320 })
 const source = ref(''), error = ref(''), busy = ref(false), downloadPath = ref('')
 const viewer = ref<HTMLDialogElement | null>(null)
 const zoomScale = ref(1), zoomTx = ref(0), zoomTy = ref(0), isDragging = ref(false)
@@ -70,7 +70,7 @@ async function load() {
     } else {
       if (props.thumbnail && props.kind === 'image' && typeof props.reader.thumbnail === 'function') {
         try {
-          const thumb = await props.reader.thumbnail(props.fileId, 320)
+          const thumb = await props.reader.thumbnail(props.fileId, props.edge === 640 ? 640 : 320)
           if (current === generation) { source.value = thumb; return }
         } catch { /* 缩略图失败时回退原图，页面不报错。 */ }
       }
@@ -103,10 +103,11 @@ onBeforeUnmount(() => { generation++; closeLightbox() })
     <template v-if="source">
       <img v-if="kind === 'image' && thumbnail" :src="source" :alt="label" :style="objectPosition ? { objectPosition: `${objectPosition.x}% ${objectPosition.y}%` } : undefined" @error="error = '图片解码失败。'; source = ''">
       <button v-else-if="kind === 'image'" class="image-open" :aria-label="`放大${label}`" @click="openLightbox()"><img :src="source" :alt="label" @error="error = '图片解码失败。'; source = ''"></button>
+      <video v-else-if="kind === 'video' && thumbnail" class="thumb-video" :src="source" controls playsinline :aria-label="label" @error="error = '浏览器无法播放此视频。'; source = ''" />
       <audio v-else-if="kind === 'audio'" :src="source" controls preload="metadata" :aria-label="label" @error="error = '浏览器无法播放此音频。'; source = ''" />
       <video v-else :src="source" controls playsinline preload="metadata" :aria-label="label" @error="error = '浏览器无法播放此视频。'; source = ''" />
     </template>
-    <div v-else class="media-state">
+    <div v-else class="media-state" :class="{ 'thumb-frame': thumbnail && (kind === 'video' || kind === 'file') }">
       <span v-if="!fileId">{{ kind === 'image' ? '未添加图片' : kind === 'audio' ? '未添加音频' : kind === 'video' ? '未添加视频' : '未添加文件' }}</span>
       <span v-else-if="busy" role="status">正在读取…</span>
       <template v-else-if="error"><span role="alert">{{ error }}</span><button class="btn" @click.stop.prevent="load">重试</button><button v-if="!thumbnail && !downloadPath" class="btn" @click="prepareDownload">下载查看</button></template>
@@ -137,7 +138,10 @@ onBeforeUnmount(() => { generation++; closeLightbox() })
 img { display: block; width: 100%; height: auto; }
 .thumbnail { aspect-ratio: 16 / 10; }
 .thumbnail img { width: 100%; height: 100%; object-fit: cover; object-position: center top; transition: transform 280ms var(--vf-ease-spring, cubic-bezier(0.22, 1, 0.36, 1)); }
-.thumbnail.contain img { object-fit: contain; padding: 12px; }
+.thumbnail.contain { aspect-ratio: 4 / 3; }
+.thumbnail.contain img, .thumb-video { object-fit: contain; object-position: center; padding: 0; background: var(--subtle); }
+.thumb-frame, .thumb-video { aspect-ratio: 4 / 3; width: 100%; height: 100%; min-height: 0; max-height: 100%; }
+.video .thumb-frame { min-height: 0; height: 100%; }
 .media-state { min-height: 72px; display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; padding: 16px; color: var(--muted); overflow-wrap: anywhere; }
 .image .media-state, .video .media-state { min-height: 180px; height: 100%; }
 .waveform-strip { display: flex; align-items: center; gap: 2px; height: 28px; padding: 4px 10px; border-radius: 8px; background: var(--subtle); border: 0.5px solid var(--vf-hairline-outer, var(--line)); margin-bottom: 6px; }

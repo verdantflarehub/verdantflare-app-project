@@ -92,6 +92,7 @@ test('material version comparison excludes a different output purpose without ch
   const html = await renderer().render('components/drama/DramaVersions.vue', { reader, versions, selections, materialMode: true }, '/projects?version=v2&compare=engine')
   assert.doesNotMatch(html, /与同用途版本比较/)
   assert.match(html, /剧情状态/); assert.match(html, /未选用候选/)
+  assert.match(html, /thumb-grid/); assert.match(html, /drama-file tile/)
   assert.equal(selections[0].version_key, 'v1')
 })
 
