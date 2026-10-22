@@ -1,3 +1,4 @@
+import { canonicalDramaRoute } from './drama-route.ts'
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const projectCategories = new Set(['image', 'character', 'music', 'video', 'ai_short_drama', 'creative_video'])
 type Domain = 'project' | 'world'
@@ -32,7 +33,9 @@ export function canonicalRoute(domain: Domain, path: string): string {
   const mode = url.searchParams.get('mode')
   const files = url.searchParams.get('view') === 'files'
   if (domain === 'project') {
-    if (projectCategories.has(url.pathname.slice(1))) {
+    const drama = canonicalDramaRoute(url.pathname + url.search)
+    if (drama) return drama
+    if (projectCategories.has(url.pathname.slice(1)) && url.pathname.slice(1) !== 'ai_short_drama') {
       const cat = url.pathname.slice(1)
       url.pathname = '/projects'
       url.searchParams.set('category', cat)

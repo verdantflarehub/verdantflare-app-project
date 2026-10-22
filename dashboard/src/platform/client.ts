@@ -26,7 +26,7 @@ export function createReadClient(sdk: AppSDK, domain: 'project' | 'world') {
   async function call<T>(name: string, args: Record<string, unknown>, _projectID?: string): Promise<T> {
     if (disposed || hidden) throw cancelled()
     const routes: Record<string, string> = domain === 'project'
-      ? { 'project.list': '/api/v1/project/list', 'project.open': '/api/v1/project/open' }
+      ? { 'project.list': '/api/v1/project/list', 'project.open': '/api/v1/project/open', 'project.thumbnail': '/api/v1/project/thumbnail' }
       : { 'world.list': '/api/v1/world/list', 'world.get': '/api/v1/world/get' }
     const artifact = domain === 'project' && name === 'artifact.read'
     if (!artifact && !Object.hasOwn(routes, name)) throw new Error('当前页面不支持此操作。')

@@ -68,6 +68,12 @@ async function load() {
       const read = await props.reader.download(props.fileId)
       if (current === generation) downloadPath.value = read.content_path
     } else {
+      if (props.thumbnail && props.kind === 'image' && typeof props.reader.thumbnail === 'function') {
+        try {
+          const thumb = await props.reader.thumbnail(props.fileId, 320)
+          if (current === generation) { source.value = thumb; return }
+        } catch { /* 缩略图失败时回退原图，页面不报错。 */ }
+      }
       const result = await props.reader.media(props.fileId, props.kind)
       if (current === generation) source.value = result
     }

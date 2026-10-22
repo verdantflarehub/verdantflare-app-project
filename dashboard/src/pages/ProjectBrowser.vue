@@ -23,6 +23,7 @@ import ProjectEditDialog from '../components/ProjectEditDialog.vue'
 import ProjectLifecycleDialog from '../components/ProjectLifecycleDialog.vue'
 import { hasProjectEditRecovery } from '../platform/project-edit'
 import { sourceReturnCategory } from '../platform/project-source'
+import { parseDramaPath } from '../platform/drama-route.ts'
 
 const route = useRoute(), router = useRouter()
 function closeImageMenu(event: Event) {
@@ -34,8 +35,9 @@ function closeImageMenu(event: Event) {
 }
 const { appSDK, dashboardHost } = useHost()
 const query = (key: string) => typeof route.query[key] === 'string' ? route.query[key] as string : ''
-const projectID = computed(() => query('project')), revisionID = computed(() => query('revision'))
-const filter = computed(() => isCategory(query('category')) ? query('category') : 'character'), search = computed(() => query('q'))
+const dramaLocation = computed(() => parseDramaPath(route.fullPath))
+const projectID = computed(() => dramaLocation.value?.projectId || query('project')), revisionID = computed(() => dramaLocation.value?.query.revision || query('revision'))
+const filter = computed(() => dramaLocation.value ? 'ai_short_drama' : isCategory(query('category')) ? query('category') : 'character'), search = computed(() => dramaLocation.value?.query.q || query('q'))
 const sort = computed(() => query('sort') === 'name' ? 'name' : 'updated')
 const categories = projectCategories
 const categoryName = (key: string) => categories.find(c => c.key === key)?.label || '项目'
@@ -71,7 +73,11 @@ const historical = computed(() => !!project.value?.head_revision_id && project.v
 const image = computed(() => content.value?.image)
 const character = computed(() => content.value?.character), music = computed(() => content.value?.music), video = computed(() => content.value?.video), drama = computed(() => content.value?.ai_short_drama), creative = computed(() => content.value?.creative_video)
 const tabs = computed(() => projectMenus(project.value?.manifest.category || ''))
-const activeTab = computed(() => tabs.value.find(t => t.key === businessKey(project.value?.manifest.category || '', query('tab'), query('kind'))) || tabs.value[0])
+const activeTab = computed(() => {
+  const dramaTab = dramaLocation.value?.tab
+  if (dramaTab && dramaTab !== 'list' && dramaTab !== 'overview') return tabs.value.find(t => t.key === dramaTab) || tabs.value[0]
+  return tabs.value.find(t => t.key === businessKey(project.value?.manifest.category || '', query('tab'), query('kind'))) || tabs.value[0]
+})
 const objectDetail = computed(() => ['item', 'material', 'shot', 'scene', 'continuity', 'deliverable', 'file', 'fixed', 'run', 'reference', 'candidate', 'lighting', 'package'].some(key => !!query(key)))
 const shared = computed(() => commonMenus.some(t => t.key === activeTab.value?.key))
 const dramaMaterial = computed(() => drama.value?.globals.find(g => g.key === query('material')))
@@ -269,7 +275,8 @@ onBeforeUnmount(() => { closeEdit(); alive = false; request++; listRequest++; na
       <header class="heading">
         <div class="heading-left"><h1>{{ projectID ? (objectTitle || project?.manifest.name || '项目') : listCategory.label }}</h1><p v-if="drama" class="tabular-nums">{{ drama.episodes.length }} 集 · {{ drama.episodes.reduce((n, e) => n + e.scenes.reduce((n, s) => n + s.shots.length, 0), 0) }} 镜 · {{ activeTab?.label }}</p><p v-else-if="image && content?.overview" class="image-overview">{{ content.overview }}</p><p v-else-if="!projectID">{{ listCategory.description }}</p></div>
         <details v-if="project?.manifest.category === 'image'" class="image-management" @click="closeImageMenu" @keydown.esc="closeImageMenu"><summary>项目操作</summary><div class="image-management-menu"><button v-if="project.can_write && !historical" @click="editCurrent('rename')">重命名</button><button v-if="project.can_write && !historical" @click="editCurrent('cover')">修改封面</button><RouterLink :to="{ path: '/workspace', query: { project: projectID } }">本机工作副本</RouterLink><button :disabled="loading" @click="retry">刷新</button><button v-if="project.can_delete && !historical" @click="deleteCurrent">删除项目</button></div></details>
-        <div v-else class="reference-row"><button v-if="project?.can_delete && !historical" class="btn" @click="deleteCurrent">删除项目</button><button v-if="!projectID" class="btn primary" @click="creating = true">＋ 新建项目</button><button v-if="project?.can_write && !historical" class="btn" @click="editCurrent('rename')">重命名</button><button v-if="project?.can_write && !historical" class="btn" @click="editCurrent('cover')">修改封面</button><RouterLink v-if="project" class="btn" :to="{ path: '/workspace', query: { project: projectID } }">本机工作副本</RouterLink><button class="btn" :disabled="loading || listLoading" @click="retry">刷新</button></div>
+        <details v-else-if="drama && projectID && dramaLocation?.tab === 'overview'" class="image-management"><summary>更多</summary><div class="image-management-menu"><button v-if="project?.can_write && !historical" @click="editCurrent('rename')">重命名</button><button v-if="project?.can_write && !historical" @click="editCurrent('cover')">修改封面</button><RouterLink :to="{ path: '/workspace', query: { project: projectID } }">本机工作副本</RouterLink><button :disabled="loading" @click="retry">刷新</button><button v-if="project?.can_delete && !historical" @click="deleteCurrent">删除项目</button></div></details>
+        <div v-else-if="!drama || !projectID" class="reference-row"><button v-if="project?.can_delete && !historical" class="btn" @click="deleteCurrent">删除项目</button><button v-if="!projectID" class="btn primary" @click="creating = true">＋ 新建项目</button><button v-if="project?.can_write && !historical" class="btn" @click="editCurrent('rename')">重命名</button><button v-if="project?.can_write && !historical" class="btn" @click="editCurrent('cover')">修改封面</button><RouterLink v-if="project" class="btn" :to="{ path: '/workspace', query: { project: projectID } }">本机工作副本</RouterLink><button class="btn" :disabled="loading || listLoading" @click="retry">刷新</button></div>
       </header>
 
       <div v-if="project && editRecovery" class="revision-notice"><p>有一项原保存结果待确认，可在此固定修订继续查询和恢复。</p><button class="btn" :disabled="editLoading" @click="editCurrent('rename')">查询或恢复原保存</button></div>
@@ -302,7 +309,7 @@ onBeforeUnmount(() => { closeEdit(); alive = false; request++; listRequest++; na
         <ProjectShared v-if="shared" :reader="reader" :tab="activeTab!.key" />
         <CreativeVideoEditor v-else-if="!reader.content && project.manifest.category === 'creative_video'" :reader="reader" @saved="creativeSaved" />
         <div v-else-if="!content" class="state">暂无业务内容。</div>
-        <ShortDramaProject v-else-if="drama" :reader="reader" :tab="activeTab?.key || 'script'" />
+        <ShortDramaProject v-else-if="drama" :reader="reader" :tab="dramaLocation?.tab === 'overview' ? 'overview' : (activeTab?.key || 'script')" />
         <CreativeVideoProject v-else-if="creative" :reader="reader" :tab="activeTab?.key || 'overview'" @saved="creativeSaved" />
         <ImageProject v-else-if="image" :reader="reader" :tab="activeTab?.key || 'works'" />
         <ShortVideoProject v-else-if="video" :reader="reader" :tab="activeTab?.key || 'storyboards'" />

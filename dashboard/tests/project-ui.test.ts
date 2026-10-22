@@ -60,8 +60,9 @@ test('drama missing deep links stay recoverable and material detail returns to i
   assert.match(missing, /当前修订没有这项资料/)
   const prop = reader.content.ai_short_drama!.globals.find(g => g.kind === 'prop')!
   const detail = await render.render('components/drama/ShortDramaProject.vue', { reader, tab: 'materials' }, `/projects?material=${prop.key}&kind=character&find=ring&status=ready`)
-  assert.match(detail, /返回道具列表/)
-  assert.match(detail, /kind=prop/); assert.match(detail, /find=ring/); assert.match(detail, /status=ready/)
+  assert.doesNotMatch(detail, /返回/)
+  assert.match(detail, /面包屑/)
+  assert.match(detail, new RegExp('/ai_short_drama/' + id(1) + '/materials/prop'))
   assert.match(detail, /入库到数字世界/)
 })
 
@@ -71,7 +72,7 @@ test('drama character identity shows linked looks and preserves source-version o
   look.input_global_keys = [character.key]
   const before = JSON.stringify(reader.content)
   const html = await render.render('components/drama/ShortDramaProject.vue', { reader, tab: 'materials' }, `/projects?material=${character.key}`)
-  assert.match(html, /剧情造型与状态/); assert(html.includes(look.name)); assert(html.includes(`returnMaterial=${character.key}`))
+  assert.match(html, /剧情造型与状态/); assert(html.includes(look.name)); assert(html.includes(`/materials/wardrobe/${look.key}`)); assert.doesNotMatch(html, /returnMaterial=/)
   const list = await render.render('components/drama/ShortDramaProject.vue', { reader, tab: 'materials' }, '/projects?kind=character')
   assert.match(list, /此历史版本尚未登记制作素材/)
   assert.equal(JSON.stringify(reader.content), before)
@@ -89,8 +90,7 @@ test('material version comparison excludes a different output purpose without ch
   const versions = [version('v1', '图片第一稿', 'image'), version('engine', '工程稿', 'project'), version('v2', '图片第二稿', 'image')]
   const selections = [{ purpose: 'image', version_key: 'v1', state_key: 'night' }]
   const html = await renderer().render('components/drama/DramaVersions.vue', { reader, versions, selections, materialMode: true }, '/projects?version=v2&compare=engine')
-  const comparison = html.match(/<select[^>]*>[\s\S]*?<\/select>/g)![1]
-  assert.match(comparison, /图片第一稿/); assert.doesNotMatch(comparison, /工程稿/)
+  assert.doesNotMatch(html, /与同用途版本比较/)
   assert.match(html, /剧情状态/); assert.match(html, /未选用候选/)
   assert.equal(selections[0].version_key, 'v1')
 })

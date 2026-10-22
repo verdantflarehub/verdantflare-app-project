@@ -18,6 +18,8 @@ async function mount() {
   const router = createRouter({ history: createProjectHistory(), routes: [
     { path: '/', redirect: '/projects' },
     { path: '/projects', component: Browser },
+    { path: '/ai_short_drama', component: Browser },
+    { path: '/ai_short_drama/:pathMatch(.*)*', component: Browser },
     { path: '/create', component: CreateProjectPage },
     { path: '/create/from-prompt', component: CreateFromPromptPage },
     { path: '/workspace', component: WorkspacePage },

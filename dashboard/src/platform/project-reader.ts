@@ -98,6 +98,15 @@ export class ProjectReader {
     }
     return this.downloads.get(id)!
   }
+  async thumbnail(id: string, edge: 320 | 640): Promise<string> {
+    this.active()
+    this.file(id)
+    const result = await callTool<{ mime: string; data: string }>('project.thumbnail', { project_id: this.projectID, revision_id: this.project!.revision_id, file_id: id, edge }, this.projectID)
+    this.active()
+    if (result.mime !== 'image/webp' || typeof result.data !== 'string' || !result.data) throw new Error('缩略图不可用。')
+    const bytes = Uint8Array.from(atob(result.data), char => char.charCodeAt(0))
+    return URL.createObjectURL(new Blob([bytes], { type: 'image/webp' }))
+  }
   async media(id: string, kind: 'image' | 'audio' | 'video'): Promise<string> {
     const read = await this.download(id)
     const mime = read.version.mime.split(';')[0].trim().toLowerCase()

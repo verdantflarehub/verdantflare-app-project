@@ -209,7 +209,7 @@ func (c *Client) Metadata(ctx context.Context, p project.Principal, ref project.
 	return v, nil
 }
 func (c *Client) Read(ctx context.Context, p project.Principal, ref project.ContentRef, a project.Access, max int64) ([]byte, error) {
-	if max <= 0 || max > 4<<20 {
+	if max <= 0 || max > 32<<20 {
 		return nil, project.ErrInvalid
 	}
 	v, e := c.Metadata(ctx, p, ref, a)

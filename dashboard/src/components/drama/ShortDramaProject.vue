@@ -12,9 +12,22 @@ import DramaTips from './DramaTips.vue'
 import DramaPublication from './DramaPublication.vue'
 import ProjectEditDialog from '../ProjectEditDialog.vue'
 import { projectSources } from '../../platform/project-source'
+import { dramaBreadcrumb, dramaHref, parseDramaPath, type DramaView } from '../../platform/drama-route.ts'
 const props = defineProps<{ reader: ProjectReader; tab: string }>()
 const tab = computed(() => ['character', 'wardrobe', 'prop', 'location', 'sound', 'music'].includes(props.tab) ? 'materials' : props.tab === 'continuity' ? 'script' : props.tab)
-const route = useRoute(), router = useRouter(), q = (key: string) => typeof route.query[key] === 'string' ? route.query[key] as string : ''
+const route = useRoute(), router = useRouter()
+const dramaView = computed(() => parseDramaPath(route.fullPath))
+function q(key: string) {
+  const view = dramaView.value
+  if (view) {
+    if (key === 'find') return view.query.q || ''
+    if (key === 'status') return view.query.status || ''
+    if (key === 'version') return view.query.version || ''
+    return String((view as unknown as Record<string, string | undefined>)[key] || '')
+  }
+  if (key === 'find') return typeof route.query.q === 'string' ? route.query.q : typeof route.query.find === 'string' ? route.query.find as string : ''
+  return typeof route.query[key] === 'string' ? route.query[key] as string : ''
+}
 const searchDraft = ref(q('find'))
 watch(() => q('find'), value => { searchDraft.value = value })
 function search() { void router.replace(link({ find: searchDraft.value || undefined })) }
@@ -32,8 +45,9 @@ const state = computed(() => {
   if (!owner) return undefined
   if (q('lighting')) return owner.states.find(s => s.key === q('lighting'))
   if (q('state')) return owner.states.find(s => s.key === q('state'))
-  const version = q('version') ? owner.versions.find(v => v.key === q('version')) : materialPreview(owner).version
-  return owner.states.find(s => s.key === version?.state_key) || owner.states[0]
+  const latest = [...owner.versions].reverse().find(v => !q('state') || v.state_key === q('state'))
+  const version = q('version') ? owner.versions.find(v => v.key === q('version')) : latest
+  return owner.states.find(s => s.key === (q('state') || version?.state_key)) || owner.states[0]
 })
 const lightingVersions = computed(() => material.value?.versions.filter(v => v.state_key === state.value?.key && (!q('version') || v.key === q('version'))) || [])
 const episode = computed(() => q('episode') ? drama.value.episodes.find(e => e.key === q('episode')) : drama.value.episodes[0])
@@ -82,13 +96,34 @@ function previewStatus(g: DramaGlobal) {
   const preview = materialPreview(g), v = preview.version
   return v ? `${g.states.find(s => s.key === v.state_key)?.name || '状态未整理'} · ${v.label} · ${{ unreviewed: '未审核', in_review: '审核中', approved: '此版已有审核记录', rejected: '需修改' }[v.review.state]} · ${preview.selected ? '项目选用' : '未选用'}` : ''
 }
+function crumbChange(target: DramaView): Record<string, string | undefined> {
+  return { tab: target.tab, kind: target.kind, material: target.material, state: target.state, episode: target.episode, scene: target.scene, shot: target.shot, deliverable: target.deliverable, continuity: target.continuity, lighting: target.lighting, package: target.package, view: target.view, version: target.query.version, revision: target.query.revision, find: target.query.q, status: target.query.status }
+}
 function categoryLink(kind: string) { return link({ tab: kind === 'continuity' ? 'continuity' : kind === 'script' ? 'script' : kind, kind, material: undefined, state: undefined, version: undefined, compare: undefined, scene: undefined, shot: undefined, find: undefined, status: undefined, continuity: undefined, returnMaterial: undefined }) }
 function shotLink(sceneKey: string, shotKey: string, tab = props.tab) { return link({ tab, episode: episode.value?.key, scene: sceneKey, shot: shotKey, material: undefined, state: undefined, version: undefined, compare: undefined }) }
-function link(change: Record<string, string | undefined>) {
-  // Object parameters belong to their owner, never to another business menu.
-  const reset = 'tab' in change || ['material', 'shot', 'deliverable'].some(key => key in change)
-  return { path: route.path, query: { ...route.query, publish: undefined, publication: undefined, ...(reset ? { lighting: undefined, package: undefined } : {}), ...change } }
+function currentView(): DramaView {
+  const parsed = dramaView.value
+  if (parsed?.projectId) return parsed
+  const projectId = project.value.project_id
+  const kind = material.value?.kind || q('kind') || (['character', 'wardrobe', 'prop', 'location', 'sound', 'music', 'continuity', 'script'].includes(props.tab) ? props.tab : undefined)
+  return { projectId, tab: props.tab || 'overview', kind, material: q('material') || undefined, state: q('state') || undefined, episode: q('episode') || undefined, scene: q('scene') || undefined, shot: q('shot') || undefined, deliverable: q('deliverable') || undefined, continuity: q('continuity') || undefined, lighting: q('lighting') || undefined, package: q('package') || undefined, view: q('view') || undefined, query: { revision: q('revision') || undefined, version: q('version') || undefined, q: q('find') || undefined, status: q('status') || undefined } }
 }
+function link(change: Record<string, string | undefined>) {
+  const view = { ...currentView(), query: { ...currentView().query } }
+  const reset = 'tab' in change || ['material', 'shot', 'deliverable'].some(key => key in change)
+  if (reset) { view.lighting = undefined; view.package = undefined }
+  for (const [key, value] of Object.entries(change)) {
+    if (key === 'find') view.query.q = value
+    else if (key === 'revision' || key === 'version' || key === 'status' || key === 'q') view.query[key] = value
+    else if (key === 'tab') view.tab = value || view.tab
+    else (view as unknown as Record<string, string | undefined>)[key] = value
+  }
+  if (view.tab === 'materials') view.tab = view.kind || 'character'
+  const href = dramaHref(view)
+  const url = new URL(href, 'https://app.invalid')
+  return { path: url.pathname, query: Object.fromEntries(url.searchParams) }
+}
+const crumbs = computed(() => dramaBreadcrumb(currentView(), { work: project.value.manifest.name, material: material.value?.name, episode: episode.value?.title, scene: scene.value?.title, shot: shot.value?.title, deliverable: delivery.value?.title, state: state.value?.name, version: q('version') || undefined }))
 function materialLink(g: DramaGlobal, version?: string, state?: string) { return link({ tab: g.kind === 'script' ? 'script' : g.kind, material: g.key, state, version, find: undefined, status: undefined, kind: g.kind, compare: undefined, episode: undefined, scene: undefined, shot: undefined, deliverable: undefined, returnMaterial: material.value?.key }) }
 const back = computed(() => link({ kind: material.value?.kind || q('kind') || undefined, material: undefined, state: undefined, version: undefined, compare: undefined, shot: undefined, scene: undefined, deliverable: undefined, returnMaterial: undefined }))
 const target = computed(() => [props.tab, q('material'), q('state'), q('episode'), q('scene'), q('shot'), q('deliverable'), q('version'), q('continuity')].join('/'))
@@ -100,15 +135,16 @@ function usageMaterial(u: DramaUsage) { const g = drama.value.globals.find(g => 
   <div class="short-drama" :class="{ 'with-rail': showRail }">
     <nav v-if="showRail" class="category-rail" :aria-label="railTitle"><h2>{{ railTitle }}</h2><RouterLink v-for="k in rail" :key="k.key" :class="{ active: activeKind === k.key }" :to="categoryLink(k.key)">{{ k.label }}</RouterLink></nav>
     <div class="workspace-body">
+    <nav class="crumb" aria-label="面包屑"><template v-for="(item, index) in crumbs" :key="item.label + index"><RouterLink v-if="index < crumbs.length - 1" :to="link(crumbChange(item.to))">{{ item.label }}</RouterLink><span v-else aria-current="page">{{ item.label }}</span><span v-if="index < crumbs.length - 1">/</span></template></nav>
     <template v-if="q('lighting')">
-      <section v-if="material?.kind === 'location' && state" class="panel"><h2>{{ material.name }} · {{ state.name }} · 环境与灯光</h2><p class="muted">固定场景状态；未登记灯光方案不视为已完成。</p><DramaDocument v-for="r in state.definition_refs" :key="r.file_id + ':' + r.anchor" :reader="reader" :file-id="r.file_id" :anchor="r.anchor" title="场景状态依据" /><template v-for="v in lightingVersions" :key="v.key"><h3>{{ v.label }}</h3><DramaDocument v-if="v.lighting_record_file_id" :reader="reader" :file-id="v.lighting_record_file_id" title="环境与灯光方案" initially-expanded /><p v-else class="muted">此版尚未登记灯光方案。</p><DramaDocument v-if="v.spatial_record_file_id" :reader="reader" :file-id="v.spatial_record_file_id" title="空间与相机记录" /></template><p v-if="!lightingVersions.length" class="empty">{{ q('version') ? '此状态没有指定的制作版本。' : '此状态尚未登记制作版本与灯光方案。' }}</p><RouterLink class="btn" :to="link({ lighting: undefined })">返回场景详情</RouterLink></section><p v-else class="empty">当前修订没有此场景状态。</p>
+      <section v-if="material?.kind === 'location' && state" class="panel"><h2>{{ material.name }} · {{ state.name }} · 环境与灯光</h2><p class="muted">固定场景状态；未登记灯光方案不视为已完成。</p><DramaDocument v-for="r in state.definition_refs" :key="r.file_id + ':' + r.anchor" :reader="reader" :file-id="r.file_id" :anchor="r.anchor" title="场景状态依据" /><template v-for="v in lightingVersions" :key="v.key"><h3>{{ v.label }}</h3><DramaDocument v-if="v.lighting_record_file_id" :reader="reader" :file-id="v.lighting_record_file_id" title="环境与灯光方案" initially-expanded /><p v-else class="muted">此版尚未登记灯光方案。</p><DramaDocument v-if="v.spatial_record_file_id" :reader="reader" :file-id="v.spatial_record_file_id" title="空间与相机记录" /></template><p v-if="!lightingVersions.length" class="empty">{{ q('version') ? '此状态没有指定的制作版本。' : '此状态尚未登记制作版本与灯光方案。' }}</p></section><p v-else class="empty">当前修订没有此场景状态。</p>
     </template>
     <template v-else-if="q('material')">
-      <nav class="material-return" aria-label="资料返回"><RouterLink class="btn" :to="back">返回{{ kindName(material?.kind || activeKind) }}列表</RouterLink><RouterLink v-if="returnMaterial" class="related-link" :to="{ ...materialLink(returnMaterial), query: { ...materialLink(returnMaterial).query, returnMaterial: undefined } }">返回「{{ returnMaterial.name }}」</RouterLink></nav>
+      
       <p v-if="!material" class="empty">当前修订没有这项资料。</p>
-      <p v-else-if="q('state') && !state" class="empty">当前修订没有这个状态，请返回资料列表重新选择。</p>
+      <p v-else-if="q('state') && !state" class="empty">当前修订没有这个状态。</p>
       <template v-else>
-        <header class="section-head"><div><span class="muted">{{ activeName }}</span><h2>{{ material.name }}</h2></div><RouterLink v-if="material.kind === 'location' && state" class="btn" :to="link({ lighting: state.key })">查看环境与灯光</RouterLink></header>
+        <header v-if="material.kind === 'location' && state" class="section-head"><RouterLink class="btn" :to="link({ lighting: state.key })">查看环境与灯光</RouterLink></header>
         <p v-if="tab === 'materials'" class="material-note material-description">{{ human(material.description) }}</p>
         <div :class="tab === 'materials' ? 'material-detail' : 'reader-layout'"><div class="stack">
           <template v-if="tab === 'materials'">
@@ -123,20 +159,20 @@ function usageMaterial(u: DramaUsage) { const g = drama.value.globals.find(g => 
       </template>
     </template>
     <template v-else-if="q('shot') && q('version')">
-      <RouterLink class="btn" :to="link({ version: undefined, compare: undefined })">返回镜头详情</RouterLink>
+      
       <template v-if="shot && shot.versions.some(v => v.key === q('version'))"><h2>{{ shot.title }} · 镜头制作版本</h2><DramaVersions fixed :reader="reader" :versions="shot.versions" :selections="shot.selected_versions" /><section class="panel"><h2>固定制作依据</h2><p class="muted">制作依据、修改记录和审核来自本版本。技术检查未登记时不推定通过。</p><DramaDocument v-for="(r, i) in shot.definition_refs" :key="r.file_id + ':' + i" :reader="reader" :file-id="r.file_id" :anchor="r.anchor" :title="'镜头依据 ' + (i + 1)" /><p v-if="!shot.definition_refs.length" class="muted">未登记额外镜头依据。</p></section></template><p v-else class="empty">当前修订没有此镜头制作版本。</p>
     </template>
     <template v-else-if="tab === 'delivery' && q('deliverable') && q('version') && !q('package')">
-      <RouterLink class="btn" :to="link({ version: undefined, compare: undefined })">返回成果详情</RouterLink>
+      
       <template v-if="delivery && delivery.versions.some(v => v.key === q('version'))"><h2>{{ delivery.title }} · 成果版本</h2><DramaVersions fixed :reader="reader" :versions="delivery.versions" :selected-key="delivery.selected_version_key" /><section class="panel"><h2>实际交付回执</h2><p class="muted">下列记录属于此成果项；仅有回执明确指向本版本时，才表示该版本已经交付。</p><DramaDocument v-for="(id, i) in delivery.delivery_record_file_ids" :key="id" :reader="reader" :file-id="id" :title="'交付记录 ' + (i + 1)" /><p v-if="!delivery.delivery_record_file_ids.length" class="empty">尚未登记实际交付回执。</p></section></template><p v-else class="empty">当前修订没有此成果版本。</p>
     </template>
     <template v-else-if="q('shot')">
-      <RouterLink class="btn" :to="back">返回镜头列表</RouterLink><p v-if="!shot" class="empty">当前修订没有这个镜头。</p>
+      <p v-if="!shot" class="empty">当前修订没有这个镜头。</p>
       <div v-else class="production-cols"><div class="stack"><section v-if="!shot.versions.length" class="panel"><h2>制作准备</h2><p class="empty">尚无制作候选，先核对素材选版、场景白模与灯光依据。</p><div class="row"><h3>场景与镜头白模</h3><p class="muted">本镜尚未登记可编辑工程与对应相机预览。</p><RouterLink class="related-link" :to="link({ view: 'spaces', shot: undefined, scene: undefined })">查看场景白模与灯光 →</RouterLink></div><div class="row"><h3>环境与灯光</h3><p class="muted">本镜段落固定相应状态；具体工程灯值与曝光以实际试光记录为准。</p></div></section><DramaVersions v-else :reader="reader" :versions="shot.versions" :selections="shot.selected_versions" /><section class="panel"><h2>{{ shot.title }}</h2><DramaProse :text="shot.overview || '镜头说明尚未填写。'" :drama="drama" /><p class="muted">{{ shot.duration_seconds == null ? '剧本时长未填写' : `剧本预算 ${shot.duration_seconds} 秒` }}</p><DramaDocument v-for="(r, i) in shot.definition_refs" :key="`${r.file_id}:${i}`" :reader="reader" :file-id="r.file_id" :anchor="r.anchor" :title="`剧本与连续性依据 ${i + 1}`" /><div v-for="s in [...shot.segments].sort((a, b) => a.order - b.order)" :key="s.key" class="row">{{ s.order }} · {{ s.label }}</div></section><section v-if="!shot.versions.length && shot.result_file_ids.length" class="panel"><h2>已有结果 · 版本关系未整理</h2><DramaFile v-for="(id, i) in shot.result_file_ids" :key="id" :reader="reader" :file-id="id" :label="`镜头结果 ${i + 1}`" /></section></div><aside class="stack"><section class="panel"><h2>固定素材与场景状态</h2><p v-if="!usages.length" class="muted">素材、白模与灯光输入尚未关联。</p><div v-for="u in usages" :key="u.key" class="row"><RouterLink :to="materialLink(drama.globals.find(g => g.key === u.global_key)!, u.version_key || undefined, u.state_key || undefined)">{{ usageMaterial(u) }} →</RouterLink><p class="muted">{{ u.segment?.label || '场次／整镜使用' }}</p></div></section><section v-if="shot.continuity_keys.length" class="panel"><h2>连续性核对</h2><div v-for="c in drama.continuity.filter(c => shot?.continuity_keys.includes(c.key))" :key="c.key" class="row"><h3>{{ c.name }}</h3><DramaProse :text="c.description" :drama="drama" /><DramaDocument v-for="(r, i) in c.definition_refs" :key="`${r.file_id}:${i}`" :reader="reader" :file-id="r.file_id" :anchor="r.anchor" :title="`连续性资料 ${i + 1}`" /></div></section><DramaTips :project-id="project.project_id" :revision-id="project.revision_id" :target="target" /></aside></div>
     </template>
     <template v-else-if="tab === 'delivery'">
-      <template v-if="q('package')"><section v-if="delivery && q('package') === delivery.key" class="panel"><h2>{{ delivery.title }} · 交付包</h2><p class="muted">固定成果版本与实际交付回执分别核对。</p><DramaVersions :reader="reader" :versions="delivery.versions" :selected-key="delivery.selected_version_key" /><h3>实际交付记录</h3><DramaDocument v-for="(id, i) in delivery.delivery_record_file_ids" :key="id" :reader="reader" :file-id="id" :title="'交付记录 ' + (i + 1)" /><p v-if="!delivery.delivery_record_file_ids.length" class="empty">尚未登记实际交付回执。</p><RouterLink class="btn" :to="link({ package: undefined })">返回成果详情</RouterLink></section><p v-else class="empty">当前修订没有此成果或交付包。</p></template>
-      <template v-else-if="q('deliverable')"><RouterLink class="btn" :to="back">返回成果列表</RouterLink><template v-if="delivery"><h2>{{ delivery.title }}</h2><RouterLink class="btn" :to="link({ package: delivery.key })">查看交付包与回执</RouterLink><p class="prose">{{ delivery.description }}</p><DramaVersions :reader="reader" :versions="delivery.versions" :selected-key="delivery.selected_version_key" /><section class="panel"><h2>实际交付记录</h2><p v-if="!delivery.delivery_record_file_ids.length" class="muted">尚未登记实际交付。导出或下载不代表客户已收到。</p><DramaDocument v-for="(id, i) in delivery.delivery_record_file_ids" :key="id" :reader="reader" :file-id="id" :title="`交付记录 ${i + 1}`" /></section><section v-if="!delivery.versions.length" class="panel"><h2>已有文件</h2><DramaFile v-for="(id, i) in delivery.file_ids" :key="id" :reader="reader" :file-id="id" :label="`成果文件 ${i + 1}`" /></section><DramaTips :project-id="project.project_id" :revision-id="project.revision_id" :target="target" /></template><p v-else class="empty">当前修订没有这项成果。</p></template>
+      <template v-if="q('package')"><section v-if="delivery && q('package') === delivery.key" class="panel"><h2>{{ delivery.title }} · 交付包</h2><p class="muted">固定成果版本与实际交付回执分别核对。</p><DramaVersions :reader="reader" :versions="delivery.versions" :selected-key="delivery.selected_version_key" /><h3>实际交付记录</h3><DramaDocument v-for="(id, i) in delivery.delivery_record_file_ids" :key="id" :reader="reader" :file-id="id" :title="'交付记录 ' + (i + 1)" /><p v-if="!delivery.delivery_record_file_ids.length" class="empty">尚未登记实际交付回执。</p></section><p v-else class="empty">当前修订没有此成果或交付包。</p></template>
+      <template v-else-if="q('deliverable')"><template v-if="delivery"><h2>{{ delivery.title }}</h2><RouterLink class="btn" :to="link({ package: delivery.key })">查看交付包与回执</RouterLink><p class="prose">{{ delivery.description }}</p><DramaVersions :reader="reader" :versions="delivery.versions" :selected-key="delivery.selected_version_key" /><section class="panel"><h2>实际交付记录</h2><p v-if="!delivery.delivery_record_file_ids.length" class="muted">尚未登记实际交付。导出或下载不代表客户已收到。</p><DramaDocument v-for="(id, i) in delivery.delivery_record_file_ids" :key="id" :reader="reader" :file-id="id" :title="`交付记录 ${i + 1}`" /></section><section v-if="!delivery.versions.length" class="panel"><h2>已有文件</h2><DramaFile v-for="(id, i) in delivery.file_ids" :key="id" :reader="reader" :file-id="id" :label="`成果文件 ${i + 1}`" /></section><DramaTips :project-id="project.project_id" :revision-id="project.revision_id" :target="target" /></template><p v-else class="empty">当前修订没有这项成果。</p></template>
       <template v-else><h2>成果与交付</h2><p class="muted">成片、工程与交付包各自固定版本；新候选不会改变历史成片。</p><div class="material-grid"><RouterLink v-for="d in drama.deliverables" :key="d.key" class="production-card" :to="link({ deliverable: d.key, version: undefined, compare: undefined })"><h3>{{ d.title }}</h3><p class="prose">{{ d.description }}</p><p class="muted">{{ d.versions.find(v => v.key === d.selected_version_key)?.label || '当前选用未整理' }} · {{ d.delivery_record_file_ids.length ? '有交付记录' : '尚无交付记录' }}</p></RouterLink></div><p v-if="!drama.deliverables.length" class="empty">尚未登记成果项。</p><section v-for="e in drama.episodes.filter(e => e.output_file_id || e.edit_file_id)" :key="e.key" class="panel"><h3>{{ e.title }} · 已有分集文件</h3><DramaFile v-if="e.output_file_id" :reader="reader" :file-id="e.output_file_id" label="成片" /><DramaFile v-if="e.edit_file_id" :reader="reader" :file-id="e.edit_file_id" label="编辑工程" /></section></template>
     </template>
     <template v-else-if="tab === 'overview'">
@@ -152,7 +188,7 @@ function usageMaterial(u: DramaUsage) { const g = drama.value.globals.find(g => 
       <template v-else>
         <div class="material-toolbar"><form v-if="!q('continuity')" class="search" @submit.prevent="search"><input v-model="searchDraft" type="search" aria-label="搜索当前内容" placeholder="搜索名称或设定"><button class="btn" type="submit">搜索</button></form><select v-if="tab === 'materials'" aria-label="素材筛选" :value="q('status') || 'all'" @change="router.replace(link({ status: ($event.target as HTMLSelectElement).value }))"><option value="all">全部素材</option><option value="ready">已有候选或成果</option><option value="missing">待制作</option></select></div>
         <template v-if="activeKind === 'continuity'">
-          <template v-if="q('continuity')"><RouterLink class="btn" :to="link({ continuity: undefined })">返回连续性目录</RouterLink><div v-if="continuityEntry" class="reader-layout"><article class="manuscript"><span class="eyebrow">{{ continuityEntry.episode.title }}</span><h2>{{ continuityEntry.title }}</h2><DramaDocument v-for="r in continuityEntry.refs" :key="`${r.file_id}:${r.anchor}`" :reader="reader" :file-id="r.file_id" :anchor="r.anchor" title="本镜连续性" initially-expanded /></article><aside class="stack"><section class="panel"><h2>相关资料</h2><RouterLink class="related-link" :to="link({ tab: 'production', episode: continuityEntry.episode.key, scene: continuityEntry.scene.key, shot: continuityEntry.key, continuity: undefined })">查看镜头与固定素材 →</RouterLink><RouterLink class="related-link" :to="link({ kind: 'script', episode: continuityEntry.episode.key, continuity: undefined })">阅读本集剧本 →</RouterLink></section><DramaTips :project-id="project.project_id" :revision-id="project.revision_id" :target="target" /></aside></div><p v-else class="empty">本镜未关联可定位的连续性章节，请查看完整资料。</p></template>
+          <template v-if="q('continuity')"><div v-if="continuityEntry" class="reader-layout"><article class="manuscript"><span class="eyebrow">{{ continuityEntry.episode.title }}</span><h2>{{ continuityEntry.title }}</h2><DramaDocument v-for="r in continuityEntry.refs" :key="`${r.file_id}:${r.anchor}`" :reader="reader" :file-id="r.file_id" :anchor="r.anchor" title="本镜连续性" initially-expanded /></article><aside class="stack"><section class="panel"><h2>相关资料</h2><RouterLink class="related-link" :to="link({ tab: 'production', episode: continuityEntry.episode.key, scene: continuityEntry.scene.key, shot: continuityEntry.key, continuity: undefined })">查看镜头与固定素材 →</RouterLink><RouterLink class="related-link" :to="link({ kind: 'script', episode: continuityEntry.episode.key, continuity: undefined })">阅读本集剧本 →</RouterLink></section><DramaTips :project-id="project.project_id" :revision-id="project.revision_id" :target="target" /></aside></div><p v-else class="empty">本镜未关联可定位的连续性章节，请查看完整资料。</p></template>
           <div v-else class="setting-grid"><RouterLink v-for="entry in continuityEntries.filter(e => matches(e.title + ' ' + e.episode.title))" :key="entry.key" class="setting-card" :to="link({ continuity: entry.key })"><div class="material-copy"><span class="muted">{{ entry.episode.title }}</span><h3>{{ entry.title }}</h3><p>核对本镜的人物、服装、道具、场景状态与灯光衔接。</p><span class="read-more">阅读连续性 →</span></div></RouterLink><p v-if="continuityEntries.length && !continuityEntries.some(e => matches(e.title + ' ' + e.episode.title))" class="empty">暂无匹配镜头，请调整关键词。</p></div>
           <section v-for="c in drama.continuity" :key="c.key" class="panel"><h3>{{ human(c.name) }}</h3><DramaProse :text="c.description" :drama="drama" /><DramaDocument v-for="(r, i) in c.definition_refs" :key="`${r.file_id}:${i}`" :reader="reader" :file-id="r.file_id" :anchor="r.anchor" :title="`连续性资料 ${i + 1}`" /><DramaDocument v-for="(id, i) in c.reference_file_ids.filter(id => !c.definition_refs.some(r => r.file_id === id))" :key="id" :reader="reader" :file-id="id" :title="`连续性完整原稿 ${i + 1}`" /></section><p v-if="!drama.continuity.length" class="empty">连续性设定尚未整理。</p>
         </template>
@@ -160,12 +196,12 @@ function usageMaterial(u: DramaUsage) { const g = drama.value.globals.find(g => 
       </template>
     </template>
     <template v-else-if="tab === 'production'">
-      <header class="section-head"><div><span class="muted">集 → 场 → 镜头</span><h2>{{ q('view') === 'spaces' ? '场景白模与灯光' : '镜头制作' }}</h2></div><RouterLink class="btn" :to="link({ view: q('view') === 'spaces' ? undefined : 'spaces', find: undefined })">{{ q('view') === 'spaces' ? '返回镜头列表' : '场景白模与灯光' }}</RouterLink></header>
+      <header class="section-head"><div><span class="muted">集 → 场 → 镜头</span><h2>{{ q('view') === 'spaces' ? '场景白模与灯光' : '镜头制作' }}</h2></div><RouterLink v-if="q('view') !== 'spaces'" class="related-link" :to="link({ view: 'spaces', find: undefined })">场景白模与灯光</RouterLink></header>
       <template v-if="q('view') === 'spaces'"><p class="muted">场景状态、灯光与白模按固定版本关联；未登记的工程和预览保留待制作。</p><div class="production-grid"><RouterLink v-for="g in locations" :key="g.key" class="production-card" :to="materialLink(g)"><span class="muted">场景空间</span><h3>{{ g.name }}</h3><span class="badge">{{ g.versions.some(v => v.purpose === 'whitebox') ? '已有白模版本' : '白模待补充' }}</span><p>{{ g.states.length }} 种场景状态 · {{ g.states.map(s => s.name).join('、') }}</p><span class="read-more">查看场景状态与灯光 →</span></RouterLink></div></template>
       <template v-else><div class="material-toolbar production-toolbar"><label>分集<select :value="episode?.key" @change="router.replace(link({ episode: ($event.target as HTMLSelectElement).value, scene: undefined, shot: undefined }))"><option v-for="e in drama.episodes" :key="e.key" :value="e.key">{{ e.title }}</option></select></label><label>制作筛选<select :value="q('status') || 'all'" @change="router.replace(link({ status: ($event.target as HTMLSelectElement).value }))"><option value="all">全部镜头</option><option value="missing">白模待补充</option><option value="ready">已有制作成果</option></select></label><form class="search" @submit.prevent="search"><input v-model="searchDraft" type="search" aria-label="搜索镜头" placeholder="搜索镜头或动作"><button class="btn" type="submit">搜索</button></form></div><p v-if="episode" class="muted">{{ episode.title }} · {{ episodeShots.length }} 镜。场景、镜头及复杂道具白模须核对空间与灯光。</p><template v-for="s in episode?.scenes" :key="s.key"><template v-if="s.shots.some(sh => matches(sh.title + ' ' + human(sh.overview)) && (q('status') !== 'ready' || sh.versions.length) && (q('status') !== 'missing' || !sh.versions.some(v => v.purpose === 'whitebox')))"><h3 class="scene-title">{{ s.title }}</h3><div class="production-grid"><RouterLink v-for="sh in s.shots.filter(sh => matches(sh.title + ' ' + human(sh.overview)) && (q('status') !== 'ready' || sh.versions.length) && (q('status') !== 'missing' || !sh.versions.some(v => v.purpose === 'whitebox')))" :key="sh.key" class="production-card" :to="shotLink(s.key, sh.key)"><span class="muted">{{ sh.duration_seconds == null ? '时长待定' : sh.duration_seconds + ' 秒预算' }}</span><h3>{{ sh.title }}</h3><span class="badge">{{ sh.versions.length ? sh.versions.length + ' 个制作版本' : '制作待开始' }}</span><p>{{ human(sh.overview?.match(/\*\*时空：\*\*([^\n]+)/)?.[1]) }}</p><span class="read-more">查看制作依据与缺项 →</span></RouterLink></div></template></template><p v-if="!episodeShots.some(sh => matches(sh.title + ' ' + human(sh.overview)) && (q('status') !== 'ready' || sh.versions.length) && (q('status') !== 'missing' || !sh.versions.some(v => v.purpose === 'whitebox')))" class="empty">暂无匹配镜头，请调整分集或筛选条件。</p></template>
     </template>
     <DramaPublication v-if="tab === 'delivery'" :reader="reader" :candidates="drama.world_candidates.filter(c => material ? c.source.kind === 'global' && c.source.key === material.key : delivery ? c.source.kind === 'deliverable' && c.source.key === delivery.key : true)" />
-    <footer>提示仅作备忘，实际修改经 MCP 执行</footer>
+
     </div>
   </div>
 </template>
@@ -196,7 +232,10 @@ h2 { font-size:18px; line-height:1.35; margin:0 0 10px; }.panel h2 { font-size:1
 .state-links,.episode-tabs,.scene-links { display:flex; gap:8px; flex-wrap:wrap; }.state-links a,.episode-tabs a { border:1px solid var(--line); padding:8px 12px; border-radius:6px; font-size:12px; }.state-links a.active,.episode-tabs a.active { border-color:var(--accent); background:var(--shell-button); }
 .related-link { display:block; color:var(--accent); font-size:13px; line-height:1.7; padding:6px 0; }.scene-links { margin-top:18px; gap:12px; }.scene-links a { color:var(--accent); font-size:12px; }
 .row { border-top:1px solid var(--line); margin-top:14px; padding-top:14px; }.row > a { font-size:13px; line-height:1.75; color:var(--accent); }
-.empty { color:var(--muted); padding:26px; border:1px dashed var(--line); border-radius:8px; font-size:13px; line-height:1.8; }
+.empty { color:var(--muted); padding:0; border:0; font-size:13px; line-height:1.8; }
+.crumb { display:flex; flex-wrap:wrap; gap:6px 8px; color:var(--muted); font-size:12px; margin-bottom:12px; }
+.crumb a { color:var(--muted); }
+.material-aside, .production-cols > aside, .reader-layout > .stack { position:sticky; top:16px; align-self:start; }
 .btn { justify-self:start; font-size:14px; border-radius:8px; padding:8px 12px; min-height:35px; }.back-link { margin-bottom:0; }
 input,select { border:1px solid var(--line); background:var(--panel); color:var(--ink); padding:9px 11px; border-radius:6px; max-width:100%; font:inherit; font-size:13px; }label { display:grid; gap:6px; color:var(--muted); font-size:12px; }
 .overview-grid { display:grid; grid-template-columns:minmax(0,1fr) 280px; gap:22px; }.story-cover { border:1px solid var(--line); border-radius:8px; background:var(--shell-panel); padding:30px; display:grid; grid-template-columns:190px minmax(0,1fr); gap:30px; align-items:center; }.story-cover p { margin:10px 0 24px; font-size:16px; line-height:1.9; }.cover-label { font-family:"Songti SC",serif; font-size:38px; line-height:1.9; letter-spacing:.16em; border-right:1px solid var(--line); padding:25px 18px 25px 0; }.cover-label span { font-size:24px; }.eyebrow { color:var(--accent); font-size:11px; letter-spacing:.12em; }

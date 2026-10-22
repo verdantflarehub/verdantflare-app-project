@@ -20,6 +20,9 @@ var (
 	ErrIdempotency = errors.New("IDEMPOTENCY_CONFLICT")
 	ErrNotReady    = errors.New("CONTENT_NOT_READY")
 	ErrDependency  = errors.New("DEPENDENCY_UNAVAILABLE")
+	ErrUnsupported = errors.New("UNSUPPORTED_MEDIA")
+	ErrTooLarge    = errors.New("PAYLOAD_TOO_LARGE")
+	ErrRateLimited = errors.New("RATE_LIMITED")
 )
 
 type ConflictError struct{ CurrentRevisionID string }

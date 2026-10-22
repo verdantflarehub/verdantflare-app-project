@@ -159,6 +159,12 @@ func (s *Service) HTTPHandler(serviceToken string, _ ...string) (http.Handler, e
 				return
 			}
 			result, err = s.Status(r.Context(), p, req.ProjectID, req.CommitID)
+		case "/internal/v1/project/thumbnail":
+			var req ThumbnailRequest
+			if !decode(&req) {
+				return
+			}
+			result, err = s.Thumbnail(r.Context(), p, req)
 		case "/internal/v1/project/use_asset":
 			var req UseAssetRequest
 			if !decode(&req) {
@@ -221,7 +227,7 @@ func httpError(w http.ResponseWriter, p Principal, err error) {
 	for _, v := range []struct {
 		error
 		status int
-	}{{ErrBusy, 409}, {ErrLifecycleConflict, 409}, {ErrInvalid, 400}, {ErrForbidden, 403}, {ErrNotFound, 404}, {ErrConflict, 409}, {ErrIdempotency, 409}, {ErrNotReady, 409}, {ErrDependency, 503}} {
+	}{{ErrBusy, 409}, {ErrRateLimited, 429}, {ErrLifecycleConflict, 409}, {ErrInvalid, 400}, {ErrUnsupported, 415}, {ErrTooLarge, 422}, {ErrForbidden, 403}, {ErrNotFound, 404}, {ErrConflict, 409}, {ErrIdempotency, 409}, {ErrNotReady, 409}, {ErrDependency, 503}} {
 		if errors.Is(err, v.error) {
 			status, code = v.status, v.Error()
 			break
