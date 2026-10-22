@@ -99,6 +99,61 @@ function parseDelivery(projectId: string, parts: string[], query: DramaQuery): D
   return { projectId, tab: 'delivery', deliverable: parts[0], package: parts[1] === 'package' ? parts[0] : undefined, query }
 }
 
+const materialTabs = new Set(['character', 'wardrobe', 'prop', 'location', 'sound', 'music'])
+const extraQueryKeys = ['file', 'fixed', 'run', 'reference', 'candidate', 'find', 'fileType'] as const
+
+function dramaFromProjects(path: string): DramaView | undefined {
+  if (!path.startsWith('/projects?') && path !== '/projects') return
+  const url = new URL(path, 'https://app.invalid')
+  if (one(url.searchParams, 'category') !== 'ai_short_drama') return
+  const canonical = canonicalDramaRoute(path)
+  return canonical ? parseDramaPath(canonical) : undefined
+}
+
+/** In-project tabs and list filters stay on the short-drama path. Other categories return undefined. */
+export function dramaBrowserTarget(currentPath: string, change: Record<string, string | undefined>): { path: string; query: Record<string, string> } | undefined {
+  if (change.category && change.category !== 'ai_short_drama') return
+  const current = parseDramaPath(currentPath) || dramaFromProjects(currentPath)
+  if (!current && change.category !== 'ai_short_drama') return
+  const carried = new URL(currentPath, 'https://app.invalid')
+  const carriedProject = keep(one(carried.searchParams, 'project'), uuid)
+  const view: DramaView = current ? { ...current, query: { ...current.query } } : { projectId: carriedProject, tab: carriedProject ? legacyTab(one(carried.searchParams, 'tab') || '', one(carried.searchParams, 'kind') || '') : 'list', kind: keep(one(carried.searchParams, 'kind'), keyPattern), query: { revision: keep(one(carried.searchParams, 'revision'), uuid) } }
+  if ('project' in change) view.projectId = change.project || undefined
+  if (!view.projectId) view.tab = 'list'
+  else if ('tab' in change) {
+    const tab = change.tab || 'overview'
+    view.tab = tab === 'tasks' ? 'production' : tab === 'episodes' ? 'overview' : tab === 'materials' ? (materialTabs.has(change.kind || '') ? change.kind! : 'character') : tab
+    if (materialTabs.has(view.tab)) view.kind = view.tab
+    else if (view.tab === 'continuity') view.kind = 'continuity'
+    else if (view.tab === 'script') view.kind = 'script'
+    else view.kind = undefined
+  }
+  for (const key of ['kind', 'material', 'state', 'episode', 'scene', 'shot', 'deliverable', 'continuity', 'lighting', 'package', 'view'] as const) {
+    if (key in change) view[key] = change[key] || undefined
+  }
+  if (view.projectId && materialTabs.has(view.tab)) view.kind = view.tab
+  if ('q' in change) view.query.q = change.q || undefined
+  else if (change.find) view.query.q = change.find
+  for (const key of ['revision', 'version', 'status', 'sort', 'shown', 'deleted'] as const) {
+    if (key in change) view.query[key] = change[key] || undefined
+  }
+  if (!view.projectId) {
+    view.kind = view.material = view.state = view.episode = view.scene = view.shot = view.deliverable = view.continuity = view.lighting = view.package = view.view = undefined
+    view.query.revision = undefined
+    view.query.version = undefined
+  }
+  const href = dramaHref(view)
+  const url = new URL(href, 'https://app.invalid')
+  const query: Record<string, string> = Object.fromEntries(url.searchParams)
+  const currentUrl = new URL(currentPath, 'https://app.invalid')
+  for (const key of extraQueryKeys) {
+    const value = key in change ? change[key] : currentUrl.searchParams.get(key) || undefined
+    if (value) query[key] = value
+    else delete query[key]
+  }
+  return { path: url.pathname, query }
+}
+
 export function dramaHref(view: DramaView): string {
   const params = new URLSearchParams()
   for (const key of queryKeys) if (view.query[key]) params.set(key, view.query[key]!)

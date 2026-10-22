@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { canonicalRoute, legacyStudioTarget, nativeRunTarget, projectTarget, worldTarget, useAssetTarget } from '../src/platform/route-links.ts'
+import { dramaBrowserTarget } from '../src/platform/drama-route.ts'
 const a = '01900000-0000-7000-8000-000000000001', b = '01900000-0000-7000-8000-000000000002'
 test('legacy bookmarks preserve the fixed revision, filters and app route', () => {
   const path = `/projects?project=${a}&revision=${b}&category=video&q=summer&tab=cast&item=lead`
@@ -14,6 +15,20 @@ test('legacy bookmarks preserve the fixed revision, filters and app route', () =
   for (const category of ['image', 'character', 'music', 'video', 'creative_video']) assert.equal(canonicalRoute('project', '/' + category), '/projects?category=' + category)
   assert.equal(canonicalRoute('project', '/ai_short_drama'), '/ai_short_drama')
   assert.equal(canonicalRoute('project', `/projects?category=ai_short_drama&project=${a}&revision=${b}&tab=location&material=bath&state=day&find=room`), `/ai_short_drama/${a}/materials/location/bath/day?revision=${b}&q=room`)
+})
+test('short-drama project tabs keep the work instead of falling back to character', () => {
+  const here = `/ai_short_drama/${a}?revision=${b}`
+  const cleared = Object.fromEntries(['item', 'episode', 'scene', 'shot', 'material', 'state', 'version', 'compare', 'deliverable', 'kind', 'find', 'fileType', 'status', 'view', 'purpose', 'segment', 'continuity', 'returnMaterial', 'file', 'fixed', 'run', 'reference', 'candidate', 'lighting', 'package'].map(key => [key, undefined]))
+  const location = dramaBrowserTarget(here, { ...cleared, tab: 'location' })
+  assert.deepEqual(location, { path: `/ai_short_drama/${a}/materials/location`, query: { revision: b } })
+  assert.equal(location?.path.includes('/projects'), false)
+  assert.deepEqual(dramaBrowserTarget(here, { ...cleared, tab: 'tasks' }), { path: `/ai_short_drama/${a}/production/shots`, query: { revision: b } })
+  assert.deepEqual(dramaBrowserTarget(here, { ...cleared, tab: 'production' }), { path: `/ai_short_drama/${a}/production/shots`, query: { revision: b } })
+  assert.deepEqual(dramaBrowserTarget(here, { ...cleared, tab: 'script' }), { path: `/ai_short_drama/${a}/script/body`, query: { revision: b } })
+  assert.deepEqual(dramaBrowserTarget(`/ai_short_drama/${a}/materials/location?revision=${b}`, { q: '浴室', shown: undefined }), { path: `/ai_short_drama/${a}/materials/location`, query: { revision: b, q: '浴室' } })
+  assert.deepEqual(dramaBrowserTarget(here, { project: undefined, category: 'ai_short_drama', tab: undefined, revision: undefined }), { path: '/ai_short_drama', query: {} })
+  assert.equal(dramaBrowserTarget('/projects?category=character&project=' + a, { tab: 'setting' }), undefined)
+  assert.deepEqual(dramaBrowserTarget('/ai_short_drama', { project: a, revision: b, tab: undefined }), { path: `/ai_short_drama/${a}`, query: { revision: b } })
 })
 test('cross application targets contain only app identity and fixed business version', () => {
   assert.deepEqual(projectTarget(a, b), { appId: 'project', path: `/projects?project=${a}&revision=${b}` })

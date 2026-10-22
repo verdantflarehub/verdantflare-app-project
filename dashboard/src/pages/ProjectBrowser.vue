@@ -23,7 +23,7 @@ import ProjectEditDialog from '../components/ProjectEditDialog.vue'
 import ProjectLifecycleDialog from '../components/ProjectLifecycleDialog.vue'
 import { hasProjectEditRecovery } from '../platform/project-edit'
 import { sourceReturnCategory } from '../platform/project-source'
-import { parseDramaPath } from '../platform/drama-route.ts'
+import { dramaBrowserTarget, parseDramaPath } from '../platform/drama-route.ts'
 
 const route = useRoute(), router = useRouter()
 function closeImageMenu(event: Event) {
@@ -115,7 +115,11 @@ const fromProject = computed(() => isProjectID(query('from')) && isProjectID(que
 const fromSourceReference = computed(() => /^project:(cast|music|production):[^\u0000-\u001f\u007f]+$/.test(query('fromReference')) ? query('fromReference') : undefined)
 const value = (text?: string | null) => text?.trim() ? text : '未填写'
 const duration = (seconds?: number | null) => seconds == null ? '时长未填写' : `${seconds} 秒`
-function link(change: Record<string, string | undefined>) { return { path: '/projects', query: { ...route.query, publish: undefined, publication: undefined, ...change } } }
+function link(change: Record<string, string | undefined>) {
+  const drama = dramaBrowserTarget(route.fullPath, change)
+  if (drama) return drama
+  return { path: '/projects', query: { ...route.query, publish: undefined, publication: undefined, ...change } }
+}
 const listLink = computed(() => link({ fromMusic: undefined, category: project.value?.manifest.category || filter.value, file: undefined, fixed: undefined, run: undefined, reference: undefined, candidate: undefined, lighting: undefined, package: undefined, project: undefined, revision: undefined, tab: undefined, item: undefined, episode: undefined, scene: undefined, shot: undefined, from: undefined, fromRevision: undefined, fromName: undefined, fromItem: undefined, fromReference: undefined, fromCategory: undefined, material: undefined, state: undefined, version: undefined, compare: undefined, deliverable: undefined, kind: undefined, find: undefined, fileType: undefined, status: undefined, view: undefined, purpose: undefined, segment: undefined, continuity: undefined, returnMaterial: undefined }))
 function openProject(item: ProjectItem) { return link({ file: undefined, fixed: undefined, run: undefined, reference: undefined, candidate: undefined, lighting: undefined, package: undefined, project: item.project_id, revision: item.head_revision_id, tab: undefined, item: undefined, episode: undefined, scene: undefined, shot: undefined, material: undefined, state: undefined, version: undefined, compare: undefined, deliverable: undefined, kind: undefined, find: undefined, fileType: undefined, status: undefined, view: undefined, purpose: undefined, segment: undefined, continuity: undefined, returnMaterial: undefined }) }
 async function openWorld(ref: AssetReference) {
@@ -127,9 +131,9 @@ const positions = new Map<string, number>()
 const listViews = new Map<string, { q?: string; sort?: string; shown?: string }>()
 const businessViews = new Map<string, Record<string, string>>()
 const businessViewKeys = ['item', 'episode', 'scene', 'shot', 'material', 'state', 'version', 'compare', 'deliverable', 'kind', 'find', 'fileType', 'status', 'view', 'purpose', 'segment', 'continuity', 'returnMaterial', 'file', 'fixed', 'run', 'reference', 'candidate', 'lighting', 'package']
-function businessViewKey(query: Record<string, unknown>, tab: string) { return JSON.stringify([query.project, query.revision, tab]) }
+function businessViewKey(project: string, revision: string, tab: string) { return JSON.stringify([project, revision, tab]) }
 function menuLink(tab: string) {
-  return link({ ...Object.fromEntries(businessViewKeys.map(key => [key, undefined])), tab, ...(businessViews.get(businessViewKey(route.query, tab)) || {}) })
+  return link({ ...Object.fromEntries(businessViewKeys.map(key => [key, undefined])), tab, ...(businessViews.get(businessViewKey(projectID.value, revisionID.value, tab)) || {}) })
 }
 const scope = appSDK.context.get()
 const scrollStorageKey = `project.scroll:${JSON.stringify([scope.userId, scope.organizationId, scope.stationId, scope.installationId, scope.contextRevision])}`
@@ -146,8 +150,12 @@ try {
 onBeforeRouteUpdate((to, from) => {
   if (!from.query.project && isCategory(String(from.query.category))) { listViews.set(String(from.query.category), { q: typeof from.query.q === 'string' ? from.query.q : undefined, sort: typeof from.query.sort === 'string' ? from.query.sort : undefined, shown: typeof from.query.shown === 'string' ? from.query.shown : undefined }); try { sessionStorage.setItem(viewsKey, JSON.stringify(Object.fromEntries(listViews))); sessionStorage.setItem(viewsKey + ':last', String(from.query.category)) } catch { /* Keep in memory. */ } }
   if (signedOut) return
-  if (typeof from.query.project === 'string' && typeof from.query.revision === 'string') {
-    const key = businessViewKey(from.query, businessKey(String(from.query.category), String(from.query.tab || ''), String(from.query.kind || '')))
+  const fromDrama = parseDramaPath(from.fullPath)
+  const fromProject = fromDrama?.projectId || (typeof from.query.project === 'string' ? from.query.project : '')
+  const fromRevision = fromDrama?.query.revision || (typeof from.query.revision === 'string' ? from.query.revision : '')
+  if (fromProject && fromRevision) {
+    const fromTab = fromDrama?.tab && fromDrama.tab !== 'list' && fromDrama.tab !== 'overview' ? fromDrama.tab : businessKey(String(from.query.category), String(from.query.tab || ''), String(from.query.kind || ''))
+    const key = businessViewKey(fromProject, fromRevision, fromTab)
     businessViews.delete(key); businessViews.set(key, Object.fromEntries(businessViewKeys.flatMap(key => typeof from.query[key] === 'string' ? [[key, from.query[key]]] : [])) as Record<string, string>)
     while (businessViews.size > 80) businessViews.delete(businessViews.keys().next().value!)
     try { sessionStorage.setItem(businessViewsKey, JSON.stringify([...businessViews])) } catch { /* Keep in memory. */ }
@@ -187,7 +195,8 @@ async function loadProject() {
     triggerRef(reader)
     editRecovery.value = pendingEdit(projectID.value)
     // Pin an unversioned deep link once; subsequent refreshes keep this revision.
-    if (!revisionID.value || query('category') !== next.project!.manifest.category) await router.replace(link({ revision: next.project!.revision_id, category: next.project!.manifest.category }))
+    const pinnedCategory = dramaLocation.value?.projectId ? next.project!.manifest.category === 'ai_short_drama' : query('category') === next.project!.manifest.category
+    if (!revisionID.value || !pinnedCategory) await router.replace(link({ revision: next.project!.revision_id, category: next.project!.manifest.category }))
   } catch (cause) { if (alive && current === request) { next.dispose(); reader.value = null; error.value = readerError(cause) } }
   finally { if (alive && current === request) { loading.value = false; void restoreScroll() } }
 }
@@ -198,7 +207,7 @@ function logout() {
   try { sessionStorage.removeItem(scrollStorageKey); sessionStorage.removeItem(viewsKey); sessionStorage.removeItem(viewsKey + ':last'); sessionStorage.removeItem(businessViewsKey) } catch { /* Storage can be disabled. */ }
   error.value = '当前会话已退出，请登录后刷新。'; listError.value = error.value
 }
-if (!projectID.value && !isCategory(query('category'))) { let last = 'character'; try { const stored = sessionStorage.getItem(viewsKey + ':last') || ''; if (isCategory(stored)) last = stored } catch { /* Use first category. */ } void router.replace(link({ category: last, ...(listViews.get(last) || {}) })) }
+if (!projectID.value && !dramaLocation.value && !isCategory(query('category'))) { let last = 'character'; try { const stored = sessionStorage.getItem(viewsKey + ':last') || ''; if (isCategory(stored)) last = stored } catch { /* Use first category. */ } void router.replace(link({ category: last, ...(listViews.get(last) || {}) })) }
 function retry() { signedOut = false; if (projectID.value) void loadProject(); else void loadList() }
 function creativeSaved(revision: string) { void router.replace(link({ revision, tab: query('tab') || 'brief' })) }
 watch([projectID, revisionID], () => void loadProject(), { immediate: true })
