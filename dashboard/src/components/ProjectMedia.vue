@@ -5,6 +5,7 @@ import { previewImage, closePreview } from '../platform/media-preview'
 const props = withDefaults(defineProps<{ reader: ProjectReader; fileId?: string | null; kind: 'image' | 'audio' | 'video' | 'file'; label: string; thumbnail?: boolean; contain?: boolean; edge?: 320 | 640; objectPosition?: { x: number; y: number } }>(), { thumbnail: false, contain: false, edge: 320 })
 const source = ref(''), error = ref(''), busy = ref(false), downloadPath = ref('')
 const viewer = ref<HTMLDialogElement | null>(null)
+const videoViewer = ref<HTMLDialogElement | null>(null)
 const zoomScale = ref(1), zoomTx = ref(0), zoomTy = ref(0), isDragging = ref(false)
 let dragStartX = 0, dragStartY = 0
 let generation = 0
@@ -28,10 +29,24 @@ function resetZoom() { zoomScale.value = 1; zoomTx.value = 0; zoomTy.value = 0; 
 function stepZoom(delta: number) { zoomScale.value = clampZoom(zoomScale.value + delta) }
 async function openLightbox() {
   previewError.value = ''
-  try { if (await previewImage(previewOwner, source.value, props.label)) return; resetZoom(); viewer.value?.showModal() }
+  try {
+    const preview = props.thumbnail && props.fileId ? await props.reader.media(props.fileId, 'image') : source.value
+    if (await previewImage(previewOwner, preview, props.label)) return
+    if (props.thumbnail) source.value = preview
+    resetZoom(); viewer.value?.showModal()
+  }
   catch { previewError.value = '无法打开图片预览，请刷新后重试。' }
 }
-function closeLightbox() { closePreview(previewOwner); resetZoom(); viewer.value?.close() }
+async function openVideo() {
+  previewError.value = ''
+  if (!source.value && props.fileId) await load()
+  if (source.value) videoViewer.value?.showModal()
+}
+function closeVideo() {
+  videoViewer.value?.querySelector('video')?.pause()
+  videoViewer.value?.close()
+}
+function closeLightbox() { closePreview(previewOwner); resetZoom(); viewer.value?.close(); closeVideo() }
 function onWheelZoom(e: WheelEvent) {
   const stage = e.currentTarget as HTMLElement | null
   const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15
@@ -100,21 +115,25 @@ onBeforeUnmount(() => { generation++; closeLightbox() })
     <div v-if="kind === 'audio' && (source || fileId)" class="waveform-strip" data-gamma="0.7" aria-hidden="true">
       <span v-for="(barHeight, idx) in waveformBars" :key="idx" class="waveform-bar" :style="{ height: `${barHeight}px` }" />
     </div>
-    <template v-if="source">
-      <img v-if="kind === 'image' && thumbnail" :src="source" :alt="label" :style="objectPosition ? { objectPosition: `${objectPosition.x}% ${objectPosition.y}%` } : undefined" @error="error = '图片解码失败。'; source = ''">
-      <button v-else-if="kind === 'image'" class="image-open" :aria-label="`放大${label}`" @click="openLightbox()"><img :src="source" :alt="label" @error="error = '图片解码失败。'; source = ''"></button>
-      <video v-else-if="kind === 'video' && thumbnail" class="thumb-video" :src="source" controls playsinline :aria-label="label" @error="error = '浏览器无法播放此视频。'; source = ''" />
+    <button v-if="kind === 'video' && thumbnail" type="button" class="video-open" :aria-label="`放大${label}`" :disabled="busy" @click="openVideo">{{ busy ? '正在读取…' : '放大查看' }}</button>
+    <template v-else-if="source">
+      <button v-if="kind === 'image' && thumbnail" type="button" class="image-open" :aria-label="`放大${label}`" @click="openLightbox()"><img :src="source" :alt="label" :style="objectPosition ? { objectPosition: `${objectPosition.x}% ${objectPosition.y}%` } : undefined" @error="error = '图片解码失败。'; source = ''"></button>
+      <button v-else-if="kind === 'image'" type="button" class="image-open" :aria-label="`放大${label}`" @click="openLightbox()"><img :src="source" :alt="label" @error="error = '图片解码失败。'; source = ''"></button>
       <audio v-else-if="kind === 'audio'" :src="source" controls preload="metadata" :aria-label="label" @error="error = '浏览器无法播放此音频。'; source = ''" />
       <video v-else :src="source" controls playsinline preload="metadata" :aria-label="label" @error="error = '浏览器无法播放此视频。'; source = ''" />
     </template>
-    <div v-else class="media-state" :class="{ 'thumb-frame': thumbnail && (kind === 'video' || kind === 'file') }">
+    <div v-else class="media-state" :class="{ 'thumb-frame': thumbnail && kind === 'file' }">
       <span v-if="!fileId">{{ kind === 'image' ? '未添加图片' : kind === 'audio' ? '未添加音频' : kind === 'video' ? '未添加视频' : '未添加文件' }}</span>
       <span v-else-if="busy" role="status">正在读取…</span>
       <template v-else-if="error"><span role="alert">{{ error }}</span><button class="btn" @click.stop.prevent="load">重试</button><button v-if="!thumbnail && !downloadPath" class="btn" @click="prepareDownload">下载查看</button></template>
       <button v-else-if="!downloadPath" class="btn" @click="load">{{ kind === 'file' ? `准备下载 ${label}` : kind === 'audio' ? '加载音频' : '加载视频' }}</button>
       <a v-if="downloadPath" class="btn" :href="downloadPath" download>{{ kind === 'file' ? `下载 ${label}` : '下载文件' }}</a>
     </div>
-    <dialog v-if="kind === 'image' && !thumbnail" ref="viewer" class="lightbox-dialog" :aria-label="label" @click="($event.target === viewer) && closeLightbox()">
+    <dialog v-if="kind === 'video' && thumbnail" ref="videoViewer" class="lightbox-dialog video-dialog" :aria-label="label" @click="($event.target === videoViewer) && closeVideo()">
+      <div class="zoom-toolbar"><span>{{ label }}</span><button class="btn close" autofocus aria-label="关闭视频" @click="closeVideo()">关闭</button></div>
+      <video v-if="source" :src="source" controls autoplay playsinline :aria-label="label" @error="error = '浏览器无法播放此视频。'; source = ''" />
+    </dialog>
+    <dialog v-if="kind === 'image'" ref="viewer" class="lightbox-dialog" :aria-label="label" @click="($event.target === viewer) && closeLightbox()">
       <div class="zoom-toolbar">
         <div class="zoom-controls">
           <button type="button" class="btn zoom-btn" aria-label="缩小图片" @click="stepZoom(-0.25)">-</button>
@@ -134,7 +153,8 @@ onBeforeUnmount(() => { generation++; closeLightbox() })
 <style scoped>
 .project-media { min-width: 0; }
 .image, .video { border-radius: 12px; background: var(--subtle); overflow: hidden; border: 0.5px solid var(--vf-hairline-outer, var(--line)); }
-.image-open { display: block; width: 100%; cursor: zoom-in; }
+.image-open, .video-open { display: grid; place-items: center; width: 100%; height: 100%; min-height: 0; border: 0; background: transparent; color: inherit; cursor: zoom-in; }
+.video-dialog video { width: min(92vw, 1280px); max-height: 80vh; object-fit: contain; background: #111; }
 img { display: block; width: 100%; height: auto; }
 .thumbnail { aspect-ratio: 16 / 10; }
 .thumbnail img { width: 100%; height: 100%; object-fit: cover; object-position: center top; transition: transform 280ms var(--vf-ease-spring, cubic-bezier(0.22, 1, 0.36, 1)); }

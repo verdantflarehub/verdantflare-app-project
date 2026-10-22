@@ -105,6 +105,9 @@ test('all drama business pages render and scene, lighting and package deep links
   }
   const location = drama.globals.find(g => g.kind === 'location')!
   assert(location)
+  location.reference_file_ids = [id(10)]
+  const references = await render.render('components/drama/ShortDramaProject.vue', { reader, tab: 'location' }, `/projects?material=${location.key}`)
+  assert.match(references, /本素材参考资料/); assert.match(references, /thumb-grid/); assert.match(references, /drama-file tile/)
   location.states = [{ key: 'night', name: '夜晚', definition_refs: [], marks: [] }]
   const state = location.states[0]
   const lighting = `/projects?tab=location&material=${location.key}&lighting=${state.key}`
@@ -200,6 +203,8 @@ test('interaction physics tokens, 48-bar 0.7 Gamma waveform, lightbox affine zoo
   assert.equal((audioHtml.match(/class="waveform-bar"/g) || []).length, 48)
   const imageHtml = await render.render('components/ProjectMedia.vue', { reader, fileId: id(10), kind: 'image', label: '角色设定图' })
   assert.match(imageHtml, /zoom-stage/); assert.match(imageHtml, /zoom-readout/); assert.match(imageHtml, /1:1/)
+  const videoThumb = await render.render('components/ProjectMedia.vue', { reader, fileId: id(10), kind: 'video', label: '机位预演', thumbnail: true })
+  assert.match(videoThumb, /放大查看/); assert.match(videoThumb, /video-dialog/); assert.match(videoThumb, /放大机位预演/)
   const parent = structuredClone(reader.project)
   const current = structuredClone(reader.project)
   current.revision_id = id(3); current.parent_revision_id = parent.revision_id
