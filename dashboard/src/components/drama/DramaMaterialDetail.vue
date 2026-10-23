@@ -4,6 +4,12 @@ import { useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 import { useHost } from '../../platform/host'
 import { reviewPath } from '../../platform/set-review'
 import { rememberReviewContext, reviewContextKey } from '../../platform/set-review-memory'
+import {
+  buildProjectViewerOpenTarget,
+  classifyViewerOpenError,
+  detectProjectSetPackages,
+  type ViewerLaunchOutcome,
+} from '../../platform/set-viewer-entry'
 import { ProjectReader, projectContentView, type DramaGlobal, type DramaUsage } from '../../platform/project-reader'
 import { materialPreview, dramaText } from '../../platform/drama-presentation'
 import { projectSources } from '../../platform/project-source'
@@ -27,6 +33,51 @@ const props = defineProps<{
 
 const router = useRouter(), route = useRoute()
 const { appSDK, dashboardHost } = useHost()
+const setViewerState = ref<ViewerLaunchOutcome | 'idle'>('idle')
+const setViewerBusy = ref(false)
+const setPackageDownloadUrl = ref('')
+const availableSetPackages = computed(() => detectProjectSetPackages(project.value?.manifest.files))
+
+async function openProjectSetViewer(setId?: string) {
+  const pkg = (setId ? availableSetPackages.value.find(p => p.setId === setId) : availableSetPackages.value[0]) || availableSetPackages.value[0]
+  if (!pkg || setViewerBusy.value) return
+  setViewerBusy.value = true
+  setViewerState.value = 'idle'
+  try {
+    const target = buildProjectViewerOpenTarget({
+      projectId: project.value.project_id,
+      revisionId: project.value.revision_id,
+      setId: pkg.setId,
+      cameraId: 'C1',
+    })
+    await appSDK.capabilities.call('navigation.openApp', target)
+    setViewerState.value = 'opened'
+  } catch (cause) {
+    setViewerState.value = classifyViewerOpenError(cause)
+  } finally {
+    setViewerBusy.value = false
+  }
+}
+
+async function prepareSetPackageDownload() {
+  const pkg = availableSetPackages.value[0]
+  if (!pkg) return
+  try {
+    const dl = await props.reader.download(pkg.sceneGlbFileId)
+    setPackageDownloadUrl.value = dl.content_path
+  } catch {
+    // Handled by reader
+  }
+}
+
+async function openSetViewerAppCenter() {
+  try {
+    await appSDK.navigation.request({ target: 'appcenter', path: '/?app=viewer' })
+  } catch {
+    // Ignore
+  }
+}
+
 function openSetReview() {
   if (!material.value || material.value.kind !== 'location') return
   const version = props.q('version') ? material.value.versions.find(v => v.key === props.q('version')) : [...material.value.versions].reverse().find(v => !state.value || v.state_key === state.value.key)
@@ -102,7 +153,21 @@ function fileGallery(groupId: string, fileIds: string[], index: number, prefix: 
     <p v-if="!material" class="empty">当前修订没有这项资料。</p>
     <p v-else-if="q('state') && !state" class="empty">当前修订没有这个状态。</p>
     <template v-else>
-      <div v-if="material.kind === 'location'" class="set-review-entry"><button class="btn" @click="openSetReview">片场审阅 →</button><span class="muted">固定证据、机位与范围结论</span></div>
+      <div v-if="material.kind === 'location'" class="set-review-entry">
+        <button class="btn" @click="openSetReview">片场审阅 →</button>
+        <template v-if="availableSetPackages.length">
+          <button class="btn primary" :disabled="setViewerBusy" @click="openProjectSetViewer()">在片场查看器中打开</button>
+          <button v-if="!setPackageDownloadUrl" class="btn" @click="prepareSetPackageDownload">准备下载片场包</button>
+          <a v-else class="btn" :href="setPackageDownloadUrl" download="scene.glb">下载片场包 (scene.glb)</a>
+        </template>
+        <span class="muted">固定证据、机位与范围结论</span>
+        <div v-if="setViewerState === 'not_installed'" class="panel" style="margin-top:10px;width:100%">
+          <strong>当前工作站尚未安装「片场查看器 (viewer)」</strong>
+          <p class="muted" style="margin:6px 0">安装后可在浏览器内三维环绕、第一人称漫游与核对 Blender 实拍机位；您仍可直接下载片场包。</p>
+          <button class="btn" @click="openSetViewerAppCenter">前往应用中心安装</button>
+        </div>
+        <p v-else-if="setViewerState === 'forbidden'" class="muted" role="alert">当前会话无权打开片场查看器或读取此固定修订。</p>
+      </div>
       <p v-if="tab === 'materials'" class="material-note material-description">{{ human(material.description) }}</p>
       <div :class="tab === 'materials' ? 'material-detail' : 'reader-layout'">
         <div class="stack">

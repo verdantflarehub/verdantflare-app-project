@@ -1,10 +1,51 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onServerPrefetch, ref, watch } from 'vue'
+import { useHost } from '../platform/host'
 import { ProjectReader, readerError } from '../platform/project-reader'
 import { previewImage, closePreview } from '../platform/media-preview'
+import {
+  buildProjectViewerOpenTarget,
+  classifyViewerOpenError,
+  findSetPackageForFile,
+  type ViewerLaunchOutcome,
+} from '../platform/set-viewer-entry'
 export interface MediaGallery { id: string; items: { fileId: string; label: string }[]; index: number }
 const props = withDefaults(defineProps<{ reader: ProjectReader; fileId?: string | null; kind: 'image' | 'audio' | 'video' | 'file'; label: string; thumbnail?: boolean; contain?: boolean; edge?: 320 | 640; objectPosition?: { x: number; y: number }; gallery?: MediaGallery }>(), { thumbnail: false, contain: false, edge: 320 })
 const source = ref(''), lightboxSource = ref(''), lightboxLabel = ref(''), error = ref(''), busy = ref(false), downloadPath = ref('')
+const viewerState = ref<ViewerLaunchOutcome | 'idle'>('idle'), viewerBusy = ref(false)
+const matchedSetPackage = computed(() => findSetPackageForFile(props.reader.project?.manifest.files, props.fileId))
+
+async function openInSetViewer() {
+  const pkg = matchedSetPackage.value
+  const proj = props.reader.project
+  if (!pkg || !proj || viewerBusy.value) return
+  viewerBusy.value = true
+  viewerState.value = 'idle'
+  try {
+    const { appSDK } = useHost()
+    const target = buildProjectViewerOpenTarget({
+      projectId: proj.project_id,
+      revisionId: proj.revision_id,
+      setId: pkg.setId,
+      cameraId: 'C1',
+    })
+    await appSDK.capabilities.call('navigation.openApp', target)
+    viewerState.value = 'opened'
+  } catch (cause) {
+    viewerState.value = classifyViewerOpenError(cause)
+  } finally {
+    viewerBusy.value = false
+  }
+}
+
+async function openViewerMarketplace() {
+  try {
+    const { appSDK } = useHost()
+    await appSDK.navigation.request({ target: 'appcenter', path: '/?app=viewer' })
+  } catch {
+    // Host navigation error ignored
+  }
+}
 const oversizedThumb = ref(false), nonImageFallback = ref(false), activeGalleryIndex = ref(0)
 const viewer = ref<HTMLDialogElement | null>(null)
 const videoViewer = ref<HTMLDialogElement | null>(null)
@@ -176,6 +217,17 @@ onBeforeUnmount(() => { generation++; closeLightbox() })
       <span v-if="!fileId">{{ kind === 'image' ? '未添加图片' : kind === 'audio' ? '未添加音频' : kind === 'video' ? '未添加视频' : '未添加文件' }}</span>
       <span v-else-if="busy" role="status">正在读取…</span>
       <template v-else-if="error"><span role="alert">{{ error }}</span><button class="btn" @click.stop.prevent="load">重试</button><button v-if="!thumbnail && !downloadPath" class="btn" @click="prepareDownload">下载查看</button></template>
+      <template v-else-if="kind === 'file' && matchedSetPackage">
+        <button type="button" class="btn primary" :disabled="viewerBusy" @click="openInSetViewer">在片场查看器中打开</button>
+        <button v-if="!downloadPath" type="button" class="btn" @click="load">准备下载 {{ label }}</button>
+        <a v-if="downloadPath" class="btn" :href="downloadPath" download>下载 {{ label }}</a>
+        <div v-if="viewerState === 'not_installed'" class="set-viewer-fallback" role="status">
+          <strong>当前工作站尚未安装「片场查看器 (viewer)」</strong>
+          <span>安装后可在浏览器内直接环绕、第一人称漫游与核对 Blender 实拍机位；您仍可直接下载片场包文件。</span>
+          <button type="button" class="btn" @click="openViewerMarketplace">前往应用中心安装</button>
+        </div>
+        <p v-else-if="viewerState === 'forbidden'" class="set-viewer-fallback" role="alert">当前会话无权打开片场查看器或读取此固定修订。</p>
+      </template>
       <button v-else-if="!downloadPath" class="btn" @click="load">{{ kind === 'file' ? `准备下载 ${label}` : kind === 'audio' ? '加载音频' : '加载视频' }}</button>
       <a v-if="downloadPath" class="btn" :href="downloadPath" download>{{ kind === 'file' ? `下载 ${label}` : '下载文件' }}</a>
     </div>
