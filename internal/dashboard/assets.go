@@ -73,7 +73,7 @@ func Load(root, version string) (*Assets, error) {
 	if strictjson.Decode(bytes.NewReader(d), 64<<10, &metadata) != nil || metadata.SchemaVersion != 1 || metadata.AppID != "project" || metadata.AppVersion != version ||
 		metadata.Dashboard.EntryRef != "dashboard/index.html" || metadata.Dashboard.Adapter != "wujie" || metadata.Dashboard.SDKMajor != 1 ||
 		metadata.Dashboard.MinimumSDKVersion != "1.1.0" ||
-		metadata.Dashboard.AppAPIPolicyRef != "project-dashboard-v1" || metadata.Dashboard.ArtifactDigest != "sha256:"+hash(index) {
+		(metadata.Dashboard.AppAPIPolicyRef != "project-dashboard-v1" && metadata.Dashboard.AppAPIPolicyRef != "project-set-review-v1") || metadata.Dashboard.ArtifactDigest != "sha256:"+hash(index) {
 		return nil, errors.New("invalid dashboard declaration")
 	}
 	var entries struct {

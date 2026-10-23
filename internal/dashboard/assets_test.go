@@ -74,6 +74,48 @@ func TestPackageRejectsAssetAndNavigationTampering(t *testing.T) {
 	}
 }
 
+func TestPackageAcceptsReviewPolicyAndRejectsUnrecognizedPolicies(t *testing.T) {
+	for _, test := range []struct {
+		policy string
+		valid  bool
+	}{
+		{"project-dashboard-v1", true},
+		{"project-set-review-v1", true},
+		{"world-set-review-v1", false},
+		{"project-set-review-v2", false},
+		{"project-set-review-v1-extra", false},
+		{"", false},
+	} {
+		t.Run(test.policy, func(t *testing.T) {
+			root := fixture(t)
+			filename := filepath.Join(root, "dashboard-declaration.json")
+			raw, err := os.ReadFile(filename)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var metadata map[string]any
+			if err := json.Unmarshal(raw, &metadata); err != nil {
+				t.Fatal(err)
+			}
+			metadata["dashboard"].(map[string]any)["appApiPolicyRef"] = test.policy
+			raw, err = json.Marshal(metadata)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filename, raw, 0600); err != nil {
+				t.Fatal(err)
+			}
+			assets, err := Load(root, "0.1.0")
+			if test.valid != (err == nil) {
+				t.Fatalf("policy acceptance=%v, want %v", err == nil, test.valid)
+			}
+			if test.valid && !bytes.Equal(assets.Declaration(), raw) {
+				t.Fatal("accepted declaration bytes changed")
+			}
+		})
+	}
+}
+
 func TestPackageAcceptsCurrentNavigationTitleAndRejectsUnknownTitle(t *testing.T) {
 	for _, title := range []string{"项目管理", "其他应用"} {
 		root := fixture(t)
