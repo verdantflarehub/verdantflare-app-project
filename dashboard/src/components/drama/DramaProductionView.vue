@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 import { useHost } from '../../platform/host'
 import { reviewPath } from '../../platform/set-review'
+import { spaceReviewTarget } from '../../platform/drama-set-review'
 import { rememberReviewContext, reviewContextKey } from '../../platform/set-review-memory'
 import { ProjectReader, projectContentView, type DramaGlobal, type DramaScene, type DramaShot } from '../../platform/project-reader'
 import { dramaText, materialPreview, shotPreview, shotSummary, type ShotPreview } from '../../platform/drama-presentation'
@@ -17,10 +18,13 @@ const props = defineProps<{
 }>()
 
 const router = useRouter(), route = useRoute(), { appSDK, dashboardHost } = useHost()
+const reviewVersions = ref<Record<string, string>>({})
+const reviewTarget = (g: DramaGlobal) => spaceReviewTarget(project.value.project_id, project.value.revision_id, g, reviewVersions.value[g.key])
 function openSetReview(g: DramaGlobal) {
-  const version = materialPreview(g).version
+  const target = reviewTarget(g)
+  if (!target) return
   rememberReviewContext(reviewContextKey(appSDK.context.get(), project.value.project_id), route.fullPath, dashboardHost.getScroll(), undefined, undefined, project.value.manifest.name, g.name)
-  void router.push(reviewPath({ kind:'project', project_id:project.value.project_id, content_revision_id:project.value.revision_id, material_key:g.key, state_key:version?.state_key || '', version_key:version?.key || '' }))
+  void router.push(reviewPath(target))
 }
 const project = computed(() => props.reader.project!)
 const drama = computed(() => projectContentView(project.value, props.reader.content)!.ai_short_drama!)
@@ -177,7 +181,11 @@ function onGridKeydown(e: KeyboardEvent) {
           </div>
           <p class="shot-summary">{{ g.states.length ? `${g.states.length} 种场景状态 · ${g.states.map(s => s.name).join('、')}` : human(g.description) || '查看场景空间、白模工程与灯光状态设定。' }}</p>
         </RouterLink>
-        <button class="btn" @click="openSetReview(g)">片场审阅 →</button>
+        <select v-if="g.versions.length > 1" v-model="reviewVersions[g.key]" :aria-label="g.name + ' 的审阅版本'">
+          <option :value="undefined">{{ materialPreview(g).version ? '当前预览版本' : '选择审阅版本' }}</option>
+          <option v-for="v in g.versions" :key="v.key" :value="v.key">{{ g.states.find(s => s.key === v.state_key)?.name || '场景状态' }} · {{ v.label }}</option>
+        </select>
+        <button class="btn" :disabled="!reviewTarget(g)" @click="openSetReview(g)">片场审阅 →</button>
       </article>
     </div>
     <p v-if="!locations.length" class="empty">暂无匹配的场景空间。</p>
