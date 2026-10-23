@@ -246,3 +246,37 @@ test('full-film selector defaults to current with only one centered preview', as
   assert.match(first, /带旁白/); assert.doesNotMatch(first, /舞台结尾/)
   assert.equal((first.match(/加载视频/g) || []).length, 1)
 })
+
+test('ProjectMedia thumbnail mode uses server thumbnail, falls back on failure/415/422, and DramaFile avoids redundant download for image extensions', async () => {
+  const render = renderer(), base = dramaReader()
+  const calls: string[] = []
+  const thumbReader = {
+    ...base,
+    file: (fileId: string) => ({ file_id: fileId, path: 'files/bath.png', content_ref: base.project.manifest.files[0].content_ref }),
+    download: async () => { calls.push('download'); return { version: { mime: 'image/png', size_bytes: 1024 } } },
+    thumbnail: async (fileId: string, edge: number) => { calls.push(`thumb:${fileId}:${edge}`); return 'blob:thumb-webp' },
+    media: async (fileId: string, kind: string) => { calls.push(`media:${fileId}:${kind}`); return 'blob:orig-png' },
+  }
+  const fileHtml = await render.render('components/drama/DramaFile.vue', { reader: thumbReader, fileId: id(10), label: '浴室一角', thumbnail: true })
+  assert.equal(calls.includes('download'), false, 'DramaFile should infer image kind from .png path without calling download()')
+  assert.deepEqual(calls, [`thumb:${id(10)}:640`])
+  assert.match(fileHtml, /blob:thumb-webp/)
+
+  const fallbackReader = {
+    ...thumbReader,
+    thumbnail: async () => { throw new Error('503 busy') },
+  }
+  const fallbackHtml = await render.render('components/ProjectMedia.vue', { reader: fallbackReader, fileId: id(10), kind: 'image', label: '回退原图', thumbnail: true })
+  assert.match(fallbackHtml, /blob:orig-png/)
+
+  const err415 = Object.assign(new Error('unsupported media'), { status: 415 })
+  const nonImageReader = { ...thumbReader, thumbnail: async () => { throw err415 } }
+  const nonImageHtml = await render.render('components/ProjectMedia.vue', { reader: nonImageReader, fileId: id(10), kind: 'image', label: '非图片条目', thumbnail: true })
+  assert.match(nonImageHtml, /media-state thumb-frame/)
+  assert.doesNotMatch(nonImageHtml, /blob:orig-png/)
+
+  const err422 = Object.assign(new Error('oversized'), { status: 422 })
+  const oversizedReader = { ...thumbReader, thumbnail: async () => { throw err422 } }
+  const oversizedHtml = await render.render('components/ProjectMedia.vue', { reader: oversizedReader, fileId: id(10), kind: 'image', label: '超大图条目', thumbnail: true })
+  assert.match(oversizedHtml, /原图较大 · 点击查看/)
+})

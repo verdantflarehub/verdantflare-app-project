@@ -186,13 +186,40 @@ export function dramaPath(view: DramaView): string {
   return path
 }
 
+const legacyParamKeys = ['project', 'tab', 'kind', 'material', 'state', 'episode', 'scene', 'shot', 'deliverable', 'continuity', 'lighting', 'package', 'view', 'compare', 'returnMaterial', 'find'] as const
+const savedListQueries = new Map<string, { q?: string; status?: string; focusKey?: string }>()
+
+function listMemoryKey(projectId: string | undefined, tab: string, kind?: string, revision?: string): string {
+  const normalizedTab = kinds.has(tab) || tab === 'materials' ? `materials:${kind || tab}` : tab
+  return `${projectId || 'list'}|${revision || 'head'}|${normalizedTab}`
+}
+
+export function rememberDramaListContext(view: DramaView, focusKey?: string) {
+  if (view.material || view.shot || view.deliverable || view.continuity || view.lighting || view.package) return
+  const key = listMemoryKey(view.projectId, view.tab, view.kind, view.query.revision)
+  const prev = savedListQueries.get(key)
+  savedListQueries.set(key, {
+    q: view.query.q,
+    status: view.query.status,
+    focusKey: focusKey !== undefined ? focusKey : prev?.focusKey,
+  })
+}
+
+export function recalledDramaListContext(view: DramaView): { q?: string; status?: string; focusKey?: string } | undefined {
+  if (view.material || view.shot || view.deliverable || view.continuity || view.lighting || view.package) return undefined
+  return savedListQueries.get(listMemoryKey(view.projectId, view.tab, view.kind, view.query.revision))
+}
+
 /** Old short-drama query addresses become pure paths. Other categories stay unchanged. */
 export function canonicalDramaRoute(path: string): string | undefined {
   if (typeof path !== 'string' || !path.startsWith('/')) return
-  const parsed = parseDramaPath(path)
-  if (parsed && path.startsWith('/ai_short_drama')) return dramaHref(parsed)
   const url = new URL(path, 'https://app.invalid')
-  if (url.pathname !== '/projects' || one(url.searchParams, 'category') !== 'ai_short_drama') return
+  const isLegacyDramaQuery = url.pathname === '/ai_short_drama' && legacyParamKeys.some(k => url.searchParams.has(k))
+  if (!isLegacyDramaQuery) {
+    const parsed = parseDramaPath(path)
+    if (parsed && path.startsWith('/ai_short_drama')) return dramaHref(parsed)
+  }
+  if (!isLegacyDramaQuery && (url.pathname !== '/projects' || one(url.searchParams, 'category') !== 'ai_short_drama')) return
   const projectId = keep(one(url.searchParams, 'project'), uuid)
   const query = dramaQuery(url.searchParams)
   const tab = one(url.searchParams, 'tab') || ''
@@ -225,9 +252,10 @@ function legacyTab(tab: string, kind: string) {
 }
 
 export function dramaBreadcrumb(view: DramaView, names: { work?: string; material?: string; episode?: string; scene?: string; shot?: string; deliverable?: string; state?: string; version?: string }) {
+  const listRecall = recalledDramaListContext({ tab: 'list', query: { revision: view.query.revision } })
   const items: { label: string; to: DramaView }[] = [
     { label: '项目管理', to: { tab: 'list', query: {} } },
-    { label: '短剧制作', to: { tab: 'list', query: view.query.q || view.query.status ? { q: view.query.q, status: view.query.status } : {} } },
+    { label: '短剧制作', to: { tab: 'list', query: view.query.q || view.query.status ? { q: view.query.q, status: view.query.status } : { q: listRecall?.q, status: listRecall?.status } } },
   ]
   if (!view.projectId) return items
   const work = { label: names.work || '作品', to: { projectId: view.projectId, tab: 'overview', query: { revision: view.query.revision } } }
@@ -236,30 +264,40 @@ export function dramaBreadcrumb(view: DramaView, names: { work?: string; materia
   if (view.tab === 'overview') return items
   if (shared.has(view.tab)) return [...items, { label: tabLabel[view.tab], to: { ...view, query: { revision: view.query.revision } } }]
   if (view.tab === 'production') {
-    items.push({ label: '镜头制作', to: { projectId: view.projectId, tab: 'production', query: { revision: view.query.revision, q: view.query.q, status: view.query.status } } })
+    const prodRecall = recalledDramaListContext({ projectId: view.projectId, tab: 'production', query: { revision: view.query.revision } })
+    items.push({ label: '镜头制作', to: { projectId: view.projectId, tab: 'production', query: { revision: view.query.revision, q: view.query.q || prodRecall?.q, status: view.query.status || prodRecall?.status } } })
     if (view.view === 'spaces') items.push({ label: '场景白模与灯光', to: view })
     if (names.episode) items.push({ label: names.episode, to: { projectId: view.projectId, tab: 'production', episode: view.episode, query: { revision: view.query.revision } } })
     if (names.scene) items.push({ label: names.scene, to: { projectId: view.projectId, tab: 'production', episode: view.episode, scene: view.scene, query: { revision: view.query.revision } } })
-    if (names.shot) items.push({ label: names.version || names.shot, to: view })
+    if (names.shot) items.push({ label: names.shot, to: { ...view, query: { revision: view.query.revision } } })
+    if (names.shot && names.version) items.push({ label: names.version, to: view })
     return items
   }
   if (view.tab === 'delivery') {
     items.push({ label: '成果与交付', to: { projectId: view.projectId, tab: 'delivery', query: { revision: view.query.revision } } })
-    if (names.deliverable) items.push({ label: names.version || names.deliverable, to: view })
+    if (names.deliverable) items.push({ label: names.deliverable, to: { ...view, package: undefined, query: { revision: view.query.revision } } })
+    if (names.deliverable && names.version && !view.package) items.push({ label: names.version, to: view })
+    if (view.package) items.push({ label: '交付包', to: view })
     return items
   }
   if (view.tab === 'script' || view.tab === 'continuity' || (view.kind && scriptKinds.has(view.kind) && !view.material)) {
     items.push({ label: '剧本', to: { projectId: view.projectId, tab: 'script', kind: 'script', query: { revision: view.query.revision } } })
-    if (view.continuity) items.push({ label: names.shot || '连续性', to: view })
+    if (view.continuity) {
+      items.push({ label: '连续性', to: { projectId: view.projectId, tab: 'continuity', kind: 'continuity', query: { revision: view.query.revision } } })
+      items.push({ label: names.shot || view.continuity, to: view })
+    }
     else if (view.kind && view.kind !== 'script') items.push({ label: tabLabel[view.kind] || view.kind, to: view })
     else if (names.episode) items.push({ label: names.episode, to: view })
     return items
   }
   const kind = view.kind && kinds.has(view.kind) ? view.kind : view.tab
-  items.push({ label: '素材', to: { projectId: view.projectId, tab: kind, kind, query: { revision: view.query.revision, q: view.query.q, status: view.query.status } } })
-  items.push({ label: tabLabel[kind] || '素材', to: { projectId: view.projectId, tab: kind, kind, query: { revision: view.query.revision, q: view.query.q, status: view.query.status } } })
+  const matRecall = recalledDramaListContext({ projectId: view.projectId, tab: kind, kind, query: { revision: view.query.revision } })
+  const matQuery = { revision: view.query.revision, q: view.query.q || matRecall?.q, status: view.query.status || matRecall?.status }
+  items.push({ label: '素材', to: { projectId: view.projectId, tab: kind, kind, query: matQuery } })
+  items.push({ label: tabLabel[kind] || '素材', to: { projectId: view.projectId, tab: kind, kind, query: matQuery } })
   if (names.material) items.push({ label: names.material, to: { ...view, lighting: undefined, query: { revision: view.query.revision } } })
-  if (names.state) items.push({ label: names.version || names.state, to: { ...view, lighting: undefined, query: { revision: view.query.revision, version: names.version ? view.query.version : undefined } } })
+  if (names.state) items.push({ label: names.state, to: { ...view, lighting: undefined, query: { revision: view.query.revision } } })
+  if (names.version && !view.lighting) items.push({ label: names.version, to: { ...view, lighting: undefined, query: { revision: view.query.revision, version: view.query.version } } })
   if (view.lighting) items.push({ label: '环境与灯光', to: view })
   return items
 }

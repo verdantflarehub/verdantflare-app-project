@@ -23,7 +23,7 @@ import ProjectEditDialog from '../components/ProjectEditDialog.vue'
 import ProjectLifecycleDialog from '../components/ProjectLifecycleDialog.vue'
 import { hasProjectEditRecovery } from '../platform/project-edit'
 import { sourceReturnCategory } from '../platform/project-source'
-import { dramaBrowserTarget, parseDramaPath } from '../platform/drama-route.ts'
+import { dramaBreadcrumb, dramaBrowserTarget, dramaHref, parseDramaPath } from '../platform/drama-route.ts'
 
 const route = useRoute(), router = useRouter()
 function closeImageMenu(event: Event) {
@@ -36,6 +36,16 @@ function closeImageMenu(event: Event) {
 const { appSDK, dashboardHost } = useHost()
 const query = (key: string) => typeof route.query[key] === 'string' ? route.query[key] as string : ''
 const dramaLocation = computed(() => parseDramaPath(route.fullPath))
+const dramaParam = (key: string) => {
+  const loc = dramaLocation.value
+  if (loc) {
+    if (key === 'find' || key === 'q') return loc.query.q || ''
+    if (key === 'status' || key === 'version' || key === 'revision') return loc.query[key] || ''
+    const val = (loc as unknown as Record<string, string | undefined>)[key]
+    if (typeof val === 'string' && val) return val
+  }
+  return query(key)
+}
 const projectID = computed(() => dramaLocation.value?.projectId || query('project')), revisionID = computed(() => dramaLocation.value?.query.revision || query('revision'))
 const filter = computed(() => dramaLocation.value ? 'ai_short_drama' : isCategory(query('category')) ? query('category') : 'character'), search = computed(() => dramaLocation.value?.query.q || query('q'))
 const sort = computed(() => query('sort') === 'name' ? 'name' : 'updated')
@@ -78,13 +88,34 @@ const activeTab = computed(() => {
   if (dramaTab && dramaTab !== 'list' && dramaTab !== 'overview') return tabs.value.find(t => t.key === dramaTab) || tabs.value[0]
   return tabs.value.find(t => t.key === businessKey(project.value?.manifest.category || '', query('tab'), query('kind'))) || tabs.value[0]
 })
-const objectDetail = computed(() => ['item', 'material', 'shot', 'scene', 'continuity', 'deliverable', 'file', 'fixed', 'run', 'reference', 'candidate', 'lighting', 'package'].some(key => !!query(key)))
+const objectDetail = computed(() => ['item', 'material', 'shot', 'scene', 'continuity', 'deliverable', 'file', 'fixed', 'run', 'reference', 'candidate', 'lighting', 'package'].some(key => !!dramaParam(key)))
 const shared = computed(() => commonMenus.some(t => t.key === activeTab.value?.key))
-const dramaMaterial = computed(() => drama.value?.globals.find(g => g.key === query('material')))
+const dramaMaterial = computed(() => drama.value?.globals.find(g => g.key === dramaParam('material')))
+const dramaState = computed(() => {
+  const owner = dramaMaterial.value
+  if (!owner) return undefined
+  if (dramaParam('lighting')) return owner.states.find(s => s.key === dramaParam('lighting'))
+  if (dramaParam('state')) return owner.states.find(s => s.key === dramaParam('state'))
+  return owner.states[0]
+})
 const dramaKindName = computed(() => ({ script: '剧本正文', character: '人物卡片', wardrobe: '服装造型', prop: '道具', location: '场景', sound: '声音', music: '配乐' }[dramaMaterial.value?.kind || 'character']))
-const dramaEpisode = computed(() => query('episode') ? drama.value?.episodes.find(ep => ep.key === query('episode')) : drama.value?.episodes[0])
-const dramaScene = computed(() => dramaEpisode.value?.scenes.find(scene => scene.key === query('scene')))
-const dramaShot = computed(() => dramaScene.value?.shots.find(shot => shot.key === query('shot')))
+const dramaEpisode = computed(() => dramaParam('episode') ? drama.value?.episodes.find(ep => ep.key === dramaParam('episode')) : drama.value?.episodes[0])
+const dramaScene = computed(() => dramaEpisode.value?.scenes.find(scene => scene.key === dramaParam('scene')))
+const dramaShot = computed(() => dramaScene.value?.shots.find(shot => shot.key === dramaParam('shot')))
+const dramaDeliverable = computed(() => drama.value?.deliverables.find(d => d.key === dramaParam('deliverable')))
+const dramaCrumbs = computed(() => {
+  if (!drama.value || !project.value || !dramaLocation.value) return []
+  return dramaBreadcrumb(dramaLocation.value, {
+    work: project.value.manifest.name,
+    material: dramaMaterial.value?.name,
+    episode: dramaEpisode.value?.title,
+    scene: dramaScene.value?.title,
+    shot: dramaShot.value?.title,
+    deliverable: dramaDeliverable.value?.title,
+    state: dramaState.value?.name,
+    version: dramaParam('version') || undefined,
+  }).map(item => ({ label: item.label, to: dramaHref(item.to) }))
+})
 const entries = computed<Detail[]>(() => {
   switch (activeTab.value?.key) {
     case 'voice': return music.value?.voice.models || []
@@ -97,16 +128,24 @@ const entries = computed<Detail[]>(() => {
 })
 const visibleEntries = computed(() => entries.value.filter(e => (e.title + ' ' + (e.overview || '')).toLocaleLowerCase().includes(query('find').trim().toLocaleLowerCase())))
 const detail = computed(() => entries.value.find(d => d.key === query('item')))
-const objectTitle = computed(() => query('file') ? project.value?.manifest.files.find(f => f.file_id === query('file'))?.path || '文件详情'
-  : query('fixed') ? '固定修订详情' : query('run') ? '原生运行详情' : query('reference') ? '固定来源引用' : query('candidate') ? '入库候选'
-  : query('lighting') ? '环境与灯光' : query('package') ? '交付包'
-  : query('material') ? dramaMaterial.value?.name || '资料详情'
-  : query('shot') ? dramaShot.value?.versions.find(v => v.key === query('version'))?.label || dramaShot.value?.title || '镜头详情'
-  : query('scene') ? dramaScene.value?.title || '场次详情'
-  : query('deliverable') ? drama.value?.deliverables.find(d => d.key === query('deliverable'))?.title || '成果详情'
-  : query('continuity') ? '连续性详情'
+const objectTitle = computed(() => dramaParam('file') ? project.value?.manifest.files.find(f => f.file_id === dramaParam('file'))?.path || '文件详情'
+  : dramaParam('fixed') ? '固定修订详情' : dramaParam('run') ? '原生运行详情' : dramaParam('reference') ? '固定来源引用' : dramaParam('candidate') ? '入库候选'
+  : dramaParam('lighting') ? '环境与灯光' : dramaParam('package') ? '交付包'
+  : dramaParam('material') ? dramaMaterial.value?.name || '资料详情'
+  : dramaParam('shot') ? dramaShot.value?.versions.find(v => v.key === dramaParam('version'))?.label || dramaShot.value?.title || '镜头详情'
+  : dramaParam('scene') ? dramaScene.value?.title || '场次详情'
+  : dramaParam('deliverable') ? dramaDeliverable.value?.title || '成果详情'
+  : dramaParam('continuity') ? '连续性详情'
   : query('item') && activeTab.value?.key === 'cast' ? video.value?.cast.find(c => c.key === query('item'))?.name || '片中角色详情'
   : image.value?.works.find(w => w.key === query('item'))?.title || detail.value?.title)
+const dramaSubtitle = computed(() => {
+  if (!drama.value) return ''
+  if (dramaMaterial.value) return [dramaKindName.value, dramaState.value?.name, dramaParam('version') ? `版本 ${dramaParam('version')}` : ''].filter(Boolean).join(' · ')
+  if (dramaShot.value) return [dramaEpisode.value?.title, dramaScene.value?.title, dramaShot.value.duration_seconds != null ? `${dramaShot.value.duration_seconds} 秒` : '', dramaParam('version') ? `版本 ${dramaParam('version')}` : ''].filter(Boolean).join(' · ')
+  if (dramaDeliverable.value) return [dramaDeliverable.value.versions.find(v => v.key === dramaDeliverable.value?.selected_version_key)?.label || '当前选用未整理', dramaDeliverable.value.delivery_record_file_ids.length ? '有交付记录' : '尚未登记实际交付回执', dramaParam('version') ? `版本 ${dramaParam('version')}` : ''].filter(Boolean).join(' · ')
+  const shots = drama.value.episodes.reduce((n, e) => n + e.scenes.reduce((n, s) => n + s.shots.length, 0), 0)
+  return `${drama.value.episodes.length} 集 · ${shots} 镜 · ${dramaLocation.value?.tab === 'overview' ? '概览' : (activeTab.value?.label || '概览')}`
+})
 const filtered = computed(() => selectProjects(items.value, search.value, sort.value))
 const shown = computed(() => filtered.value.slice(0, visibleCount.value))
 const displayTime = (time?: string) => time && Number.isFinite(Date.parse(time)) ? new Date(time).toLocaleString('zh-CN') : '更新时间未知'
@@ -133,6 +172,7 @@ const businessViews = new Map<string, Record<string, string>>()
 const businessViewKeys = ['item', 'episode', 'scene', 'shot', 'material', 'state', 'version', 'compare', 'deliverable', 'kind', 'find', 'fileType', 'status', 'view', 'purpose', 'segment', 'continuity', 'returnMaterial', 'file', 'fixed', 'run', 'reference', 'candidate', 'lighting', 'package']
 function businessViewKey(project: string, revision: string, tab: string) { return JSON.stringify([project, revision, tab]) }
 function menuLink(tab: string) {
+  if (dramaLocation.value) return link({ ...Object.fromEntries(businessViewKeys.map(key => [key, undefined])), tab })
   return link({ ...Object.fromEntries(businessViewKeys.map(key => [key, undefined])), tab, ...(businessViews.get(businessViewKey(projectID.value, revisionID.value, tab)) || {}) })
 }
 const scope = appSDK.context.get()
@@ -271,18 +311,27 @@ onBeforeUnmount(() => { closeEdit(); alive = false; request++; listRequest++; na
   <main class="main project-browser" :class="{ 'drama-browser': drama, 'video-browser': video }">
     <div class="workspace">
       <nav class="breadcrumbs" aria-label="面包屑">
-        <RouterLink :to="listLink">项目管理</RouterLink><span>/</span>
-        <template v-if="projectID">
-        <template v-if="fromProject"><RouterLink :to="link({ category: sourceReturnCategory(query('fromCategory')), project: fromProject.id, revision: fromProject.revision, tab: fromSourceReference ? 'references' : 'cast', item: fromSourceReference ? undefined : query('fromItem') || undefined, reference: fromSourceReference, from: undefined, fromRevision: undefined, fromName: undefined, fromItem: undefined, fromReference: undefined, fromCategory: undefined })">{{ fromProject.name }}</RouterLink><span>/</span></template>
-        <RouterLink :to="{ ...listLink, query: { ...listLink.query, category: project?.manifest.category || filter || undefined } }">{{ categoryName(project?.manifest.category || filter) }}</RouterLink><span>/</span>
-        <template v-if="objectDetail"><RouterLink :to="link({ item: undefined, material: undefined, shot: undefined, scene: undefined, continuity: undefined, deliverable: undefined, file: undefined, fixed: undefined, run: undefined, reference: undefined, candidate: undefined, lighting: undefined, package: undefined, state: undefined, version: undefined, compare: undefined, tab: undefined, kind: undefined })">{{ project?.manifest.name || '项目' }}</RouterLink><span>/</span><RouterLink :to="link({ item: undefined, material: undefined, shot: undefined, scene: undefined, continuity: undefined, deliverable: undefined, file: undefined, fixed: undefined, run: undefined, reference: undefined, candidate: undefined, lighting: undefined, package: undefined, state: undefined, version: undefined, compare: undefined })">{{ activeTab?.label }}</RouterLink><span>/</span><span aria-current="page">{{ objectTitle || '详情' }}</span></template>
-        <span v-else aria-current="page">{{ project?.manifest.name || '项目' }}</span>
+        <template v-if="dramaCrumbs.length">
+          <template v-for="(item, index) in dramaCrumbs" :key="`${index}:${item.label}`">
+            <RouterLink v-if="index < dramaCrumbs.length - 1" :to="item.to">{{ item.label }}</RouterLink>
+            <span v-else aria-current="page">{{ item.label }}</span>
+            <span v-if="index < dramaCrumbs.length - 1">/</span>
+          </template>
         </template>
-        <span v-else aria-current="page">{{ listCategory.label }}</span>
+        <template v-else>
+          <RouterLink :to="listLink">项目管理</RouterLink><span>/</span>
+          <template v-if="projectID">
+          <template v-if="fromProject"><RouterLink :to="link({ category: sourceReturnCategory(query('fromCategory')), project: fromProject.id, revision: fromProject.revision, tab: fromSourceReference ? 'references' : 'cast', item: fromSourceReference ? undefined : query('fromItem') || undefined, reference: fromSourceReference, from: undefined, fromRevision: undefined, fromName: undefined, fromItem: undefined, fromReference: undefined, fromCategory: undefined })">{{ fromProject.name }}</RouterLink><span>/</span></template>
+          <RouterLink :to="{ ...listLink, query: { ...listLink.query, category: project?.manifest.category || filter || undefined } }">{{ categoryName(project?.manifest.category || filter) }}</RouterLink><span>/</span>
+          <template v-if="objectDetail"><RouterLink :to="link({ item: undefined, material: undefined, shot: undefined, scene: undefined, continuity: undefined, deliverable: undefined, file: undefined, fixed: undefined, run: undefined, reference: undefined, candidate: undefined, lighting: undefined, package: undefined, state: undefined, version: undefined, compare: undefined, tab: undefined, kind: undefined })">{{ project?.manifest.name || '项目' }}</RouterLink><span>/</span><RouterLink :to="link({ item: undefined, material: undefined, shot: undefined, scene: undefined, continuity: undefined, deliverable: undefined, file: undefined, fixed: undefined, run: undefined, reference: undefined, candidate: undefined, lighting: undefined, package: undefined, state: undefined, version: undefined, compare: undefined })">{{ activeTab?.label }}</RouterLink><span>/</span><span aria-current="page">{{ objectTitle || '详情' }}</span></template>
+          <span v-else aria-current="page">{{ project?.manifest.name || '项目' }}</span>
+          </template>
+          <span v-else aria-current="page">{{ listCategory.label }}</span>
+        </template>
       </nav>
       <ProjectLifecycleDialog ref="lifecycleDialog" @changed="lifecycleChanged" />
       <header class="heading">
-        <div class="heading-left"><h1>{{ projectID ? (objectTitle || project?.manifest.name || '项目') : listCategory.label }}</h1><p v-if="drama" class="tabular-nums">{{ drama.episodes.length }} 集 · {{ drama.episodes.reduce((n, e) => n + e.scenes.reduce((n, s) => n + s.shots.length, 0), 0) }} 镜 · {{ activeTab?.label }}</p><p v-else-if="image && content?.overview" class="image-overview">{{ content.overview }}</p><p v-else-if="!projectID">{{ listCategory.description }}</p></div>
+        <div class="heading-left"><h1>{{ projectID ? (objectTitle || project?.manifest.name || '项目') : listCategory.label }}</h1><p v-if="drama" class="tabular-nums">{{ dramaSubtitle }}</p><p v-else-if="image && content?.overview" class="image-overview">{{ content.overview }}</p><p v-else-if="!projectID">{{ listCategory.description }}</p></div>
         <details v-if="project?.manifest.category === 'image'" class="image-management" @click="closeImageMenu" @keydown.esc="closeImageMenu"><summary>项目操作</summary><div class="image-management-menu"><button v-if="project.can_write && !historical" @click="editCurrent('rename')">重命名</button><button v-if="project.can_write && !historical" @click="editCurrent('cover')">修改封面</button><RouterLink :to="{ path: '/workspace', query: { project: projectID } }">本机工作副本</RouterLink><button :disabled="loading" @click="retry">刷新</button><button v-if="project.can_delete && !historical" @click="deleteCurrent">删除项目</button></div></details>
         <details v-else-if="drama && projectID && dramaLocation?.tab === 'overview'" class="image-management"><summary>更多</summary><div class="image-management-menu"><button v-if="project?.can_write && !historical" @click="editCurrent('rename')">重命名</button><button v-if="project?.can_write && !historical" @click="editCurrent('cover')">修改封面</button><RouterLink :to="{ path: '/workspace', query: { project: projectID } }">本机工作副本</RouterLink><button :disabled="loading" @click="retry">刷新</button><button v-if="project?.can_delete && !historical" @click="deleteCurrent">删除项目</button></div></details>
         <div v-else-if="!drama || !projectID" class="reference-row"><button v-if="project?.can_delete && !historical" class="btn" @click="deleteCurrent">删除项目</button><button v-if="!projectID" class="btn primary" @click="creating = true">＋ 新建项目</button><button v-if="project?.can_write && !historical" class="btn" @click="editCurrent('rename')">重命名</button><button v-if="project?.can_write && !historical" class="btn" @click="editCurrent('cover')">修改封面</button><RouterLink v-if="project" class="btn" :to="{ path: '/workspace', query: { project: projectID } }">本机工作副本</RouterLink><button class="btn" :disabled="loading || listLoading" @click="retry">刷新</button></div>
@@ -314,11 +363,11 @@ onBeforeUnmount(() => { closeEdit(); alive = false; request++; listRequest++; na
         <section v-if="project.manifest.asset_refs?.length" class="panel"><h2>数字世界引用</h2><div class="reference-row"><button v-for="ref in project.manifest.asset_refs" :key="`${ref.asset_id}:${ref.asset_version_id}:${ref.purpose}`" class="btn" @click="openWorld(ref)">{{ ref.purpose }} · 查看固定版本</button></div></section>
         <section v-if="historical" class="revision-notice" role="status"><div><strong>正在查看历史版本</strong><p>图片、制作版本及选用状态均为当时记录，后续同步的素材不会出现在此版本中。</p></div><RouterLink class="btn" :to="link({ revision: undefined, state: undefined, version: undefined, compare: undefined })">查看最新版本</RouterLink></section>
         <RouterLink v-if="musicReturnRoute(route.query.fromMusic)" class="btn" :to="musicReturnRoute(route.query.fromMusic)!">返回来源作品</RouterLink>
-        <nav v-if="!objectDetail || image" class="business-tabs" aria-label="项目业务"><RouterLink v-for="tab in tabs" :key="tab.key" :class="{ active: activeTab?.key === tab.key }" :aria-current="activeTab?.key === tab.key ? 'page' : undefined" :to="menuLink(tab.key)">{{ tab.label }}</RouterLink></nav>
+        <nav v-if="!objectDetail || image" class="business-tabs" aria-label="项目业务"><RouterLink v-for="tab in tabs" :key="tab.key" :class="{ active: (!dramaLocation || dramaLocation.tab !== 'overview') && activeTab?.key === tab.key }" :aria-current="(!dramaLocation || dramaLocation.tab !== 'overview') && activeTab?.key === tab.key ? 'page' : undefined" :to="menuLink(tab.key)">{{ tab.label }}</RouterLink></nav>
         <ProjectShared v-if="shared" :reader="reader" :tab="activeTab!.key" />
         <CreativeVideoEditor v-else-if="!reader.content && project.manifest.category === 'creative_video'" :reader="reader" @saved="creativeSaved" />
         <div v-else-if="!content" class="state">暂无业务内容。</div>
-        <ShortDramaProject v-else-if="drama" :reader="reader" :tab="dramaLocation?.tab === 'overview' ? 'overview' : (activeTab?.key || 'script')" />
+        <ShortDramaProject v-else-if="drama" :reader="reader" :tab="dramaLocation?.tab === 'overview' ? 'overview' : (activeTab?.key || 'script')" hide-crumb />
         <CreativeVideoProject v-else-if="creative" :reader="reader" :tab="activeTab?.key || 'overview'" @saved="creativeSaved" />
         <ImageProject v-else-if="image" :reader="reader" :tab="activeTab?.key || 'works'" />
         <ShortVideoProject v-else-if="video" :reader="reader" :tab="activeTab?.key || 'storyboards'" />

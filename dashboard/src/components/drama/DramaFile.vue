@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ProjectReader, readerError } from '../../platform/project-reader'
-import ProjectMedia from '../ProjectMedia.vue'
-const props = defineProps<{ reader: ProjectReader; fileId: string; label: string; hideLabel?: boolean; thumbnail?: boolean }>()
+import ProjectMedia, { type MediaGallery } from '../ProjectMedia.vue'
+const props = defineProps<{ reader: ProjectReader; fileId: string; label: string; hideLabel?: boolean; thumbnail?: boolean; gallery?: MediaGallery }>()
 const kind = ref<'image' | 'audio' | 'video' | 'file' | null>(null), error = ref('')
 const caption = computed(() => {
   try {
@@ -10,11 +10,31 @@ const caption = computed(() => {
     return path.split('/').pop() || props.label
   } catch { return props.label }
 })
+function inferKindFromPath(fileId: string): 'image' | 'audio' | 'video' | null {
+  try {
+    const ext = props.reader.file(fileId).path.split('.').pop()?.toLowerCase() || ''
+    if (['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext)) return 'image'
+    if (['mp4', 'webm', 'mov'].includes(ext)) return 'video'
+    if (['mp3', 'wav', 'flac', 'm4a', 'aac'].includes(ext)) return 'audio'
+  } catch { /* Fall back to metadata inspection. */ }
+  return null
+}
 let serial = 0
 async function inspect() {
   const current = ++serial; kind.value = null; error.value = ''
-  try { const file = await props.reader.download(props.fileId); if (serial !== current) return; const mime = file.version.mime.split(';')[0]; kind.value = mime.startsWith('image/') ? 'image' : mime.startsWith('audio/') ? 'audio' : mime.startsWith('video/') ? 'video' : 'file' }
-  catch (cause) { if (serial === current) error.value = readerError(cause) }
+  const inferred = inferKindFromPath(props.fileId)
+  if (inferred) {
+    kind.value = inferred
+    return
+  }
+  try {
+    const file = await props.reader.download(props.fileId)
+    if (serial !== current) return
+    const mime = file.version.mime.split(';')[0]
+    kind.value = mime.startsWith('image/') ? 'image' : mime.startsWith('audio/') ? 'audio' : mime.startsWith('video/') ? 'video' : 'file'
+  } catch (cause) {
+    if (serial === current) error.value = readerError(cause)
+  }
 }
 watch(() => [props.reader, props.fileId], inspect, { immediate: true })
 onBeforeUnmount(() => { serial++ })
@@ -23,9 +43,9 @@ onBeforeUnmount(() => { serial++ })
   <div class="drama-file" :class="{ tile: thumbnail }">
     <p v-if="!hideLabel && !thumbnail" class="muted">{{ label }}</p>
     <div v-if="thumbnail && kind" class="review-frame">
-      <ProjectMedia :reader="reader" :file-id="fileId" :kind="kind" :label="caption" :thumbnail="kind === 'image' || kind === 'video'" contain :edge="640" />
+      <ProjectMedia :reader="reader" :file-id="fileId" :kind="kind" :label="caption" :thumbnail="kind === 'image' || kind === 'video'" contain :edge="640" :gallery="kind === 'image' ? gallery : undefined" />
     </div>
-    <ProjectMedia v-else-if="kind" :reader="reader" :file-id="fileId" :kind="kind" :label="label" />
+    <ProjectMedia v-else-if="kind" :reader="reader" :file-id="fileId" :kind="kind" :label="label" :gallery="kind === 'image' ? gallery : undefined" />
     <p v-else-if="error" role="alert">{{ error }} <button class="btn" @click="inspect">重试</button></p>
     <p v-else role="status">正在读取文件信息…</p>
     <p v-if="thumbnail && kind" class="tile-caption" :title="caption">{{ caption }}</p>

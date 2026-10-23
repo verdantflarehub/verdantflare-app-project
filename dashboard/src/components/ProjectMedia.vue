@@ -1,14 +1,17 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onServerPrefetch, ref, watch } from 'vue'
 import { ProjectReader, readerError } from '../platform/project-reader'
 import { previewImage, closePreview } from '../platform/media-preview'
-const props = withDefaults(defineProps<{ reader: ProjectReader; fileId?: string | null; kind: 'image' | 'audio' | 'video' | 'file'; label: string; thumbnail?: boolean; contain?: boolean; edge?: 320 | 640; objectPosition?: { x: number; y: number } }>(), { thumbnail: false, contain: false, edge: 320 })
-const source = ref(''), error = ref(''), busy = ref(false), downloadPath = ref('')
+export interface MediaGallery { id: string; items: { fileId: string; label: string }[]; index: number }
+const props = withDefaults(defineProps<{ reader: ProjectReader; fileId?: string | null; kind: 'image' | 'audio' | 'video' | 'file'; label: string; thumbnail?: boolean; contain?: boolean; edge?: 320 | 640; objectPosition?: { x: number; y: number }; gallery?: MediaGallery }>(), { thumbnail: false, contain: false, edge: 320 })
+const source = ref(''), lightboxSource = ref(''), lightboxLabel = ref(''), error = ref(''), busy = ref(false), downloadPath = ref('')
+const oversizedThumb = ref(false), nonImageFallback = ref(false), activeGalleryIndex = ref(0)
 const viewer = ref<HTMLDialogElement | null>(null)
 const videoViewer = ref<HTMLDialogElement | null>(null)
 const zoomScale = ref(1), zoomTx = ref(0), zoomTy = ref(0), isDragging = ref(false)
 let dragStartX = 0, dragStartY = 0
 let generation = 0
+let lastTrigger: HTMLElement | null = null
 const previewOwner = {}, previewError = ref('')
 
 const waveformBars = computed(() => {
@@ -24,20 +27,43 @@ const waveformBars = computed(() => {
   return bars
 })
 
+const hasGallery = computed(() => (props.gallery?.items.length || 0) > 1)
+
 function clampZoom(next: number) { return Math.max(0.5, Math.min(5, Math.round(next * 100) / 100)) }
 function resetZoom() { zoomScale.value = 1; zoomTx.value = 0; zoomTy.value = 0; isDragging.value = false }
 function stepZoom(delta: number) { zoomScale.value = clampZoom(zoomScale.value + delta) }
-async function openLightbox() {
+async function openLightbox(event?: Event) {
+  if (event?.currentTarget instanceof HTMLElement) lastTrigger = event.currentTarget
   previewError.value = ''
+  activeGalleryIndex.value = props.gallery?.index ?? 0
+  lightboxLabel.value = props.label
   try {
-    const preview = props.thumbnail && props.fileId ? await props.reader.media(props.fileId, 'image') : source.value
-    if (await previewImage(previewOwner, preview, props.label)) return
-    if (props.thumbnail) source.value = preview
+    const preview = (props.thumbnail || oversizedThumb.value) && props.fileId ? await props.reader.media(props.fileId, 'image') : source.value
+    const galleryMeta = props.gallery && props.gallery.items.length > 1 ? { id: props.gallery.id, index: activeGalleryIndex.value, count: props.gallery.items.length } : undefined
+    if (await previewImage(previewOwner, preview, props.label, galleryMeta)) return
+    lightboxSource.value = preview
     resetZoom(); viewer.value?.showModal()
   }
   catch { previewError.value = '无法打开图片预览，请刷新后重试。' }
 }
-async function openVideo() {
+async function stepGallery(delta: -1 | 1) {
+  if (!props.gallery || props.gallery.items.length <= 1) return
+  const count = props.gallery.items.length
+  const nextIndex = (activeGalleryIndex.value + delta + count) % count
+  const target = props.gallery.items[nextIndex]
+  if (!target) return
+  try {
+    const preview = await props.reader.media(target.fileId, 'image')
+    activeGalleryIndex.value = nextIndex
+    lightboxLabel.value = target.label
+    lightboxSource.value = preview
+    resetZoom()
+  } catch {
+    previewError.value = '无法读取该张原图，请重试。'
+  }
+}
+async function openVideo(event?: Event) {
+  if (event?.currentTarget instanceof HTMLElement) lastTrigger = event.currentTarget
   previewError.value = ''
   if (!source.value && props.fileId) await load()
   if (source.value) videoViewer.value?.showModal()
@@ -45,8 +71,9 @@ async function openVideo() {
 function closeVideo() {
   videoViewer.value?.querySelector('video')?.pause()
   videoViewer.value?.close()
+  lastTrigger?.focus?.()
 }
-function closeLightbox() { closePreview(previewOwner); resetZoom(); viewer.value?.close(); closeVideo() }
+function closeLightbox() { closePreview(previewOwner); resetZoom(); viewer.value?.close(); closeVideo(); lastTrigger?.focus?.() }
 function onWheelZoom(e: WheelEvent) {
   const stage = e.currentTarget as HTMLElement | null
   const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15
@@ -76,7 +103,7 @@ function onPointerUp() { isDragging.value = false }
 
 async function load() {
   const current = ++generation
-  source.value = ''; error.value = ''; downloadPath.value = ''; busy.value = true
+  source.value = ''; lightboxSource.value = ''; error.value = ''; downloadPath.value = ''; oversizedThumb.value = false; nonImageFallback.value = false; busy.value = true
   try {
     if (!props.fileId) return
     if (props.kind === 'file') {
@@ -87,7 +114,16 @@ async function load() {
         try {
           const thumb = await props.reader.thumbnail(props.fileId, props.edge === 640 ? 640 : 320)
           if (current === generation) { source.value = thumb; return }
-        } catch { /* 缩略图失败时回退原图，页面不报错。 */ }
+        } catch (thumbErr) {
+          if (current !== generation) return
+          const status = (thumbErr as { status?: number } | null)?.status
+          if (status === 415) { nonImageFallback.value = true; return }
+          if (status === 422) { oversizedThumb.value = true; return }
+          const read = await props.reader.download(props.fileId)
+          if (current !== generation) return
+          if (!read.version.mime.toLowerCase().startsWith('image/')) { nonImageFallback.value = true; return }
+          if (read.version.size > 8 * 1024 * 1024) { oversizedThumb.value = true; return }
+        }
       }
       const result = await props.reader.media(props.fileId, props.kind)
       if (current === generation) source.value = result
@@ -101,11 +137,14 @@ async function prepareDownload() {
   try { const read = await props.reader.download(props.fileId); if (current === generation) downloadPath.value = read.content_path }
   catch (cause) { if (current === generation) error.value = readerError(cause) }
 }
+let activeLoad: Promise<void> | null = null
 watch(() => [props.reader, props.fileId, props.kind, props.thumbnail], () => {
-  generation++; source.value = ''; error.value = ''; downloadPath.value = ''; busy.value = false
+  generation++; source.value = ''; lightboxSource.value = ''; error.value = ''; downloadPath.value = ''; oversizedThumb.value = false; nonImageFallback.value = false; busy.value = false
   closeLightbox()
-  if ((props.kind === 'image' || (props.kind === 'video' && props.thumbnail)) && props.fileId) void load()
+  if ((props.kind === 'image' || (props.kind === 'video' && props.thumbnail)) && props.fileId) activeLoad = load()
+  else activeLoad = null
 }, { immediate: true })
+onServerPrefetch(async () => { if (typeof props.reader.thumbnail === 'function' && activeLoad) await activeLoad })
 onBeforeUnmount(() => { generation++; closeLightbox() })
 </script>
 
@@ -115,15 +154,21 @@ onBeforeUnmount(() => { generation++; closeLightbox() })
     <div v-if="kind === 'audio' && (source || fileId)" class="waveform-strip" data-gamma="0.7" aria-hidden="true">
       <span v-for="(barHeight, idx) in waveformBars" :key="idx" class="waveform-bar" :style="{ height: `${barHeight}px` }" />
     </div>
-    <button v-if="kind === 'video' && thumbnail && fileId" type="button" class="video-open" :class="{ loaded: !!source }" :aria-label="`放大${label}`" :disabled="busy" @click="openVideo">
+    <button v-if="kind === 'video' && thumbnail && fileId" type="button" class="video-open" :class="{ loaded: !!source }" :aria-label="`放大${label}`" :disabled="busy" @click="openVideo($event)">
       <video v-if="source" class="thumb-video" :src="source" muted playsinline preload="auto" :aria-label="label" @loadedmetadata="($event.target as HTMLVideoElement).currentTime = 0.001" @error="error = '浏览器无法播放此视频。'; source = ''" />
       <span v-else-if="busy" role="status">正在读取…</span>
       <span v-else-if="error" role="alert">{{ error }}</span>
       <span class="video-open-badge">放大查看</span>
     </button>
+    <button v-else-if="kind === 'image' && oversizedThumb && fileId" type="button" class="image-open oversized-thumb" :aria-label="`放大${label}`" @click="openLightbox($event)">
+      <span>原图较大 · 点击查看</span>
+    </button>
+    <div v-else-if="kind === 'image' && nonImageFallback" class="media-state thumb-frame">
+      <span>{{ label }}</span>
+    </div>
     <template v-else-if="source">
-      <button v-if="kind === 'image' && thumbnail" type="button" class="image-open" :aria-label="`放大${label}`" @click="openLightbox()"><img :src="source" :alt="label" :style="objectPosition ? { objectPosition: `${objectPosition.x}% ${objectPosition.y}%` } : undefined" @error="error = '图片解码失败。'; source = ''"></button>
-      <button v-else-if="kind === 'image'" type="button" class="image-open" :aria-label="`放大${label}`" @click="openLightbox()"><img :src="source" :alt="label" @error="error = '图片解码失败。'; source = ''"></button>
+      <button v-if="kind === 'image' && thumbnail" type="button" class="image-open" :aria-label="`放大${label}`" @click="openLightbox($event)"><img :src="source" :alt="label" loading="lazy" :style="objectPosition ? { objectPosition: `${objectPosition.x}% ${objectPosition.y}%` } : undefined" @error="error = '图片解码失败。'; source = ''"></button>
+      <button v-else-if="kind === 'image'" type="button" class="image-open" :aria-label="`放大${label}`" @click="openLightbox($event)"><img :src="source" :alt="label" @error="error = '图片解码失败。'; source = ''"></button>
       <audio v-else-if="kind === 'audio'" :src="source" controls preload="metadata" :aria-label="label" @error="error = '浏览器无法播放此音频。'; source = ''" />
       <video v-else :src="source" controls playsinline preload="metadata" :aria-label="label" @error="error = '浏览器无法播放此视频。'; source = ''" />
     </template>
@@ -138,18 +183,23 @@ onBeforeUnmount(() => { generation++; closeLightbox() })
       <div class="zoom-toolbar"><span>{{ label }}</span><button class="btn close" autofocus aria-label="关闭视频" @click="closeVideo()">关闭</button></div>
       <video v-if="source" :src="source" controls autoplay playsinline :aria-label="label" @error="error = '浏览器无法播放此视频。'; source = ''" />
     </dialog>
-    <dialog v-if="kind === 'image'" ref="viewer" class="lightbox-dialog" :aria-label="label" @click="($event.target === viewer) && closeLightbox()">
+    <dialog v-if="kind === 'image'" ref="viewer" class="lightbox-dialog" :aria-label="lightboxLabel || label" @click="($event.target === viewer) && closeLightbox()">
       <div class="zoom-toolbar">
         <div class="zoom-controls">
           <button type="button" class="btn zoom-btn" aria-label="缩小图片" @click="stepZoom(-0.25)">-</button>
           <span class="zoom-readout tabular-nums">{{ Math.round(zoomScale * 100) }}%</span>
           <button type="button" class="btn zoom-btn" aria-label="放大图片" @click="stepZoom(0.25)">+</button>
           <button type="button" class="btn zoom-btn" aria-label="1:1 原始比例" @click="resetZoom()">1:1</button>
+          <template v-if="hasGallery">
+            <button type="button" class="btn zoom-btn" aria-label="上一张" @click="stepGallery(-1)">上一张</button>
+            <span class="zoom-readout tabular-nums">{{ activeGalleryIndex + 1 }} / {{ gallery!.items.length }}</span>
+            <button type="button" class="btn zoom-btn" aria-label="下一张" @click="stepGallery(1)">下一张</button>
+          </template>
         </div>
         <button class="btn close" autofocus aria-label="关闭图片" @click="closeLightbox()">关闭</button>
       </div>
       <div class="zoom-stage" :class="{ dragging: isDragging }" @wheel.prevent="onWheelZoom" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointerup="onPointerUp" @pointercancel="onPointerUp">
-        <img :src="source || undefined" :alt="label" :style="{ transform: `translate3d(${zoomTx}px, ${zoomTy}px, 0) scale(${zoomScale})` }">
+        <img :src="(lightboxSource || source) || undefined" :alt="lightboxLabel || label" :style="{ transform: `translate3d(${zoomTx}px, ${zoomTy}px, 0) scale(${zoomScale})` }">
       </div>
     </dialog>
   </div>
@@ -159,6 +209,7 @@ onBeforeUnmount(() => { generation++; closeLightbox() })
 .project-media { min-width: 0; }
 .image, .video { border-radius: 12px; background: var(--subtle); overflow: hidden; border: 0.5px solid var(--vf-hairline-outer, var(--line)); }
 .image-open, .video-open { position: relative; display: grid; place-items: center; width: 100%; height: 100%; min-height: 0; padding: 0; border: 0; background: transparent; color: inherit; cursor: zoom-in; }
+.oversized-thumb { min-height: 120px; padding: 16px; color: var(--muted); font-size: 13px; }
 .video-open .thumb-video { pointer-events: none; }
 .video-open.loaded .video-open-badge { position: absolute; right: 8px; bottom: 8px; padding: 3px 8px; border-radius: 6px; background: rgba(15, 20, 18, 0.72); color: #fff; font-size: 12px; line-height: 1.4; pointer-events: none; }
 .video-dialog video { width: min(92vw, 1280px); max-height: 80vh; object-fit: contain; background: #111; }

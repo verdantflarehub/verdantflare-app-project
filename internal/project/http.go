@@ -236,6 +236,9 @@ func httpError(w http.ResponseWriter, p Principal, err error) {
 	if !ValidID(p.RequestID) {
 		p.RequestID = newID()
 	}
+	if status == 429 {
+		w.Header().Set("Retry-After", "1")
+	}
 	w.Header().Set("X-Request-Id", p.RequestID)
 	w.WriteHeader(status)
 	var details map[string]string

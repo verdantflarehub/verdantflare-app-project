@@ -31,6 +31,7 @@ export class ProjectReader {
   private documents = new Map<string, Promise<{ text: string; mime: string }>>()
   private reads = new ProjectReads(error => error instanceof MCPRequestError && [502, 503, 504].includes(error.status))
   private downloads = new Map<string, Promise<Download>>()
+  private thumbnails = new Map<string, Promise<string>>()
   private blobs = new Map<string, Promise<string>>()
   private urls = new Set<string>()
   constructor(readonly projectID: string, readonly revisionID?: string) {}
@@ -73,7 +74,25 @@ export class ProjectReader {
   private async readDocument(id: string): Promise<{ text: string; mime: string }> {
     this.active()
     const file = this.file(id)
-    const read = await callTool<{ mode: string; text: string; version: Download['version'] }>('artifact.read', { mode: 'text', content_ref: file.content_ref, access: this.access() }, this.projectID)
+    let read: { mode: string; text: string; version: Download['version'] }
+    try {
+      read = await callTool<{ mode: string; text: string; version: Download['version'] }>('artifact.read', { mode: 'text', content_ref: file.content_ref, access: this.access() }, this.projectID)
+    } catch (error) {
+      if ((error as { name?: string })?.name === 'AbortError' || (error instanceof MCPRequestError && [401, 403, 502, 503, 504].includes(error.status))) throw error
+      const dl = await callTool<Download>('artifact.read', { mode: 'download', content_ref: file.content_ref, access: this.access() }, this.projectID)
+      this.active()
+      const v = dl.version
+      if (!v || v.store_id !== file.content_ref.store_id || v.artifact_id !== file.content_ref.artifact_id || v.version_id !== file.content_ref.version_id || typeof v.mime !== 'string' || !Number.isSafeInteger(v.size) || v.size < 0 || v.size > 4 * 1024 * 1024 || !/^[a-f0-9]{64}$/.test(v.sha256) || typeof dl.content_path !== 'string') throw new Error('资料内容与当前固定版本不匹配。')
+      const response = await fetch(controlledContentPath(dl.content_path), { credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: this.controller.signal })
+      if (!response.ok) throw new MCPRequestError('资料读取失败，请重试。', response.status)
+      const buf = await response.arrayBuffer()
+      this.active()
+      if (buf.byteLength > 4 * 1024 * 1024 || buf.byteLength !== v.size) throw new Error('资料正文不完整，请下载查看。')
+      const hash = await crypto.subtle.digest('SHA-256', buf)
+      this.active()
+      if (Array.from(new Uint8Array(hash), b => b.toString(16).padStart(2, '0')).join('') !== v.sha256) throw new Error('资料内容校验失败，请重试。')
+      return { text: new TextDecoder('utf-8', { fatal: true }).decode(buf), mime: v.mime.split(';')[0].trim().toLowerCase() }
+    }
     this.active()
     const v = read.version
     if (read.mode !== 'text' || typeof read.text !== 'string' || !v || v.store_id !== file.content_ref.store_id || v.artifact_id !== file.content_ref.artifact_id || v.version_id !== file.content_ref.version_id || typeof v.mime !== 'string' || !Number.isSafeInteger(v.size) || !/^[a-f0-9]{64}$/.test(v.sha256)) throw new Error('资料内容与当前固定版本不匹配。')
@@ -101,11 +120,30 @@ export class ProjectReader {
   async thumbnail(id: string, edge: 320 | 640): Promise<string> {
     this.active()
     this.file(id)
-    const result = await callTool<{ mime: string; data: string }>('project.thumbnail', { project_id: this.projectID, revision_id: this.project!.revision_id, file_id: id, edge }, this.projectID)
-    this.active()
-    if (result.mime !== 'image/webp' || typeof result.data !== 'string' || !result.data) throw new Error('缩略图不可用。')
-    const bytes = Uint8Array.from(atob(result.data), char => char.charCodeAt(0))
-    return URL.createObjectURL(new Blob([bytes], { type: 'image/webp' }))
+    const cacheKey = `${id}:${edge}`
+    if (!this.thumbnails.has(cacheKey)) {
+      const requestThumb = async () => {
+        try {
+          return await callTool<{ mime: string; data: string }>('project.thumbnail', { project_id: this.projectID, revision_id: this.project!.revision_id, file_id: id, edge }, this.projectID)
+        } catch (err) {
+          if (err instanceof MCPRequestError && ![429, 500, 502, 503, 504].includes(err.status)) throw err
+          return await callTool<{ mime: string; data: string }>('project.thumbnail', { project_id: this.projectID, revision_id: this.project!.revision_id, file_id: id, edge }, this.projectID)
+        }
+      }
+      const promise = requestThumb().then(result => {
+        this.active()
+        if (result.mime !== 'image/webp' || typeof result.data !== 'string' || !result.data) throw new Error('缩略图不可用。')
+        const bytes = Uint8Array.from(atob(result.data), char => char.charCodeAt(0))
+        const url = URL.createObjectURL(new Blob([bytes], { type: 'image/webp' }))
+        this.urls.add(url)
+        return url
+      }).catch(error => {
+        this.thumbnails.delete(cacheKey)
+        throw error
+      })
+      this.thumbnails.set(cacheKey, promise)
+    }
+    return this.thumbnails.get(cacheKey)!
   }
   async media(id: string, kind: 'image' | 'audio' | 'video'): Promise<string> {
     const read = await this.download(id)
@@ -141,5 +179,5 @@ export class ProjectReader {
     }
     return this.blobs.get(id)!
   }
-  dispose() { this.disposed = true; this.reads.dispose(); this.controller.abort(); this.urls.forEach(url => URL.revokeObjectURL(url)); this.urls.clear(); this.blobs.clear(); this.downloads.clear(); this.documents.clear() }
+  dispose() { this.disposed = true; this.reads.dispose(); this.controller.abort(); this.urls.forEach(url => URL.revokeObjectURL(url)); this.urls.clear(); this.blobs.clear(); this.thumbnails.clear(); this.downloads.clear(); this.documents.clear() }
 }
