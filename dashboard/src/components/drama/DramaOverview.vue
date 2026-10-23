@@ -87,7 +87,7 @@ function definitionVersion(kind: string) {
     <span class="muted">一部作品，共用一套创作依据</span>
   </header>
   <div class="document-grid">
-    <RouterLink v-for="k in scriptKinds" :key="k.key" class="document-card" :to="link({ tab: 'script', kind: k.key })">
+    <RouterLink v-for="k in scriptKinds" :key="k.key" class="document-card" :to="link({ tab: k.key, kind: k.key })">
       <span class="doc-symbol">{{ k.label.slice(0, 1) }}</span>
       <div>
         <span class="muted">{{ definitionVersion(k.key) }}</span>

@@ -108,25 +108,10 @@ function previewStatus(g: DramaGlobal) {
   return v ? `${g.states.find(s => s.key === v.state_key)?.name || '状态未整理'} · ${v.label} · ${{ unreviewed: '未审核', in_review: '审核中', approved: '此版已有审核记录', rejected: '需修改' }[v.review.state]} · ${preview.selected ? '项目选用' : '未选用'}` : ''
 }
 
-function crumbChange(target: DramaView): Record<string, string | undefined> {
-  return {
-    tab: target.tab,
-    kind: target.kind,
-    material: target.material,
-    state: target.state,
-    episode: target.episode,
-    scene: target.scene,
-    shot: target.shot,
-    deliverable: target.deliverable,
-    continuity: target.continuity,
-    lighting: target.lighting,
-    package: target.package,
-    view: target.view,
-    version: target.query.version,
-    revision: target.query.revision,
-    find: target.query.q,
-    status: target.query.status,
-  }
+function crumbLink(target: DramaView) {
+  const href = dramaHref(target)
+  const url = new URL(href, 'https://app.invalid')
+  return { path: url.pathname, query: Object.fromEntries(url.searchParams) }
 }
 
 function categoryLink(kind: string) {
@@ -192,15 +177,24 @@ function link(change: Record<string, string | undefined>) {
   return { path: url.pathname, query: Object.fromEntries(url.searchParams) }
 }
 
+const versionLabel = computed(() => {
+  const vKey = q('version')
+  if (!vKey) return undefined
+  if (material.value) return material.value.versions.find(v => v.key === vKey)?.label || vKey
+  if (shot.value) return shot.value.versions.find(v => v.key === vKey)?.label || vKey
+  if (delivery.value) return delivery.value.versions.find(v => v.key === vKey)?.label || vKey
+  return vKey
+})
+
 const crumbs = computed(() => dramaBreadcrumb(currentView(), {
   work: project.value.manifest.name,
   material: material.value?.name,
   episode: episode.value?.title,
   scene: scene.value?.title,
-  shot: shot.value?.title,
+  shot: shot.value?.title || continuityEntry.value?.title,
   deliverable: delivery.value?.title,
   state: state.value?.name,
-  version: q('version') || undefined,
+  version: versionLabel.value,
 }))
 
 function materialLink(g: DramaGlobal, version?: string, stateKey?: string) {
@@ -220,7 +214,7 @@ const target = computed(() => [props.tab, q('material'), q('state'), q('episode'
     <div class="workspace-body">
       <nav v-if="!hideCrumb" class="crumb" aria-label="面包屑">
         <template v-for="(item, index) in crumbs" :key="item.label + index">
-          <RouterLink v-if="index < crumbs.length - 1" :to="link(crumbChange(item.to))">{{ item.label }}</RouterLink>
+          <RouterLink v-if="index < crumbs.length - 1" :to="crumbLink(item.to)">{{ item.label }}</RouterLink>
           <span v-else aria-current="page">{{ item.label }}</span>
           <span v-if="index < crumbs.length - 1">/</span>
         </template>
@@ -283,7 +277,7 @@ const target = computed(() => [props.tab, q('material'), q('state'), q('episode'
               </div>
               <DramaProse v-if="episode.overview" :text="episode.overview" :drama="drama" />
               <template v-for="s in episode.scenes.filter(s => !q('scene') || s.key === q('scene'))" :key="s.key">
-                <h3><RouterLink :to="link({ scene: s.key })">{{ s.title }} · 查看场次 →</RouterLink></h3>
+                <h3><RouterLink :to="link({ episode: episode.key, scene: s.key })">{{ s.title }} · 查看场次 →</RouterLink></h3>
                 <section v-for="sh in s.shots" :key="sh.key" class="script-scene">
                   <header class="scene-heading">
                     <h3>{{ sh.title }}</h3>
@@ -291,7 +285,7 @@ const target = computed(() => [props.tab, q('material'), q('state'), q('episode'
                   </header>
                   <DramaProse hide-production-notes :text="sh.overview" :drama="drama" />
                   <div class="scene-links">
-                    <RouterLink :to="link({ kind: 'continuity', continuity: sh.key, find: undefined })">查看连续性 →</RouterLink>
+                    <RouterLink :to="link({ tab: 'continuity', kind: 'continuity', continuity: sh.key, episode: undefined, scene: undefined, find: undefined })">查看连续性 →</RouterLink>
                     <RouterLink :to="shotLink(s.key, sh.key, 'production')">查看镜头制作 →</RouterLink>
                   </div>
                 </section>
@@ -306,7 +300,7 @@ const target = computed(() => [props.tab, q('material'), q('state'), q('episode'
             <aside class="stack">
               <section class="panel">
                 <h2>本集人物</h2>
-                <RouterLink v-for="g in episodeCharacters" :key="g.key" class="related-link" :to="link({ material: g.key, kind: 'character' })">{{ g.name }}</RouterLink>
+                <RouterLink v-for="g in episodeCharacters" :key="g.key" class="related-link" :to="materialLink(g, undefined, materialPreview(g).version?.state_key)">{{ g.name }}</RouterLink>
                 <h3>配套设定</h3>
                 <RouterLink v-for="k in scriptKinds.filter(k => ['location', 'wardrobe', 'prop'].includes(k.key))" :key="k.key" class="related-link" :to="categoryLink(k.key)">{{ k.label }}</RouterLink>
               </section>
@@ -344,7 +338,7 @@ const target = computed(() => [props.tab, q('material'), q('state'), q('episode'
                   <section class="panel">
                     <h2>相关资料</h2>
                     <RouterLink class="related-link" :to="link({ tab: 'production', episode: continuityEntry.episode.key, scene: continuityEntry.scene.key, shot: continuityEntry.key, continuity: undefined })">查看镜头与固定素材 →</RouterLink>
-                    <RouterLink class="related-link" :to="link({ kind: 'script', episode: continuityEntry.episode.key, continuity: undefined })">阅读本集剧本 →</RouterLink>
+                    <RouterLink class="related-link" :to="link({ tab: 'script', kind: 'script', episode: continuityEntry.episode.key, continuity: undefined })">阅读本集剧本 →</RouterLink>
                   </section>
                   <DramaTips :project-id="project.project_id" :revision-id="project.revision_id" :target="target" />
                 </aside>
@@ -378,7 +372,7 @@ const target = computed(() => [props.tab, q('material'), q('state'), q('episode'
               v-for="g in filtered"
               :key="g.key"
               :class="tab === 'materials' ? 'material-card' : 'setting-card'"
-              :to="link({ material: g.key, kind: g.kind, returnMaterial: undefined, state: tab === 'materials' ? materialPreview(g).version?.state_key : undefined, version: tab === 'materials' ? materialPreview(g).version?.key : undefined, compare: undefined })"
+              :to="link({ material: g.key, kind: g.kind, returnMaterial: undefined, state: tab === 'materials' ? materialPreview(g).version?.state_key : undefined, version: undefined, compare: undefined })"
             >
               <div v-if="tab === 'materials'" class="media-thumb">
                 <ProjectMedia v-if="materialPreview(g).fileId" :reader="reader" :file-id="materialPreview(g).fileId" kind="image" :label="g.name" thumbnail />

@@ -344,4 +344,25 @@ test('drama production view renders 16:9 storyboard wall, 4-tier camera previs f
   const previsFiltered = await render.render('components/drama/ShortDramaProject.vue', { reader: mediaReader, tab: 'production' }, `/ai_short_drama/${id(1)}/production/shots?status=previs`)
   assert.match(previsFiltered, /铜戒特写/)
   assert.doesNotMatch(previsFiltered, /S09 C6/)
+
+  // Location material list breadcrumb shows 场景 directly without 剧本 or 素材, and material cards do not pollute URL with ?version=
+  const location = drama.globals.find(g => g.kind === 'location')!
+  location.states = [{ key: 'lit_cold', name: '灯亮 · 冷绿荧光', definition_refs: [], marks: [] }]
+  location.versions = [{
+    key: 'whitebox_v5',
+    label: 'V5 白模·灯亮',
+    state_key: 'lit_cold',
+    purpose: 'whitebox',
+    segment_key: null,
+    basis_revision_id: id(2),
+    parent_version_key: null,
+    change_note: '白模',
+    file_refs: [{ file_id: id(10), purpose: 'preview', content_ref: reader.project.manifest.files[0].content_ref }],
+    generation_record_file_ids: [],
+    review: { state: 'approved', record_file_id: null },
+  }]
+  const locListHtml = await render.render('components/drama/ShortDramaProject.vue', { reader: mediaReader, tab: 'location' }, `/ai_short_drama/${id(1)}/materials/location`)
+  assert.match(locListHtml, /<span aria-current="page"[^>]*>场景<\/span>/)
+  assert.match(locListHtml, /href="\/ai_short_drama"[^>]*>短剧制作<\/a>/)
+  assert.doesNotMatch(locListHtml, />剧本<\/a>|<span>\/<\/span><a[^>]*>素材<\/a>|version=whitebox_v5/)
 })

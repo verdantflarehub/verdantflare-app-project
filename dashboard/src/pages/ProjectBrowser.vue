@@ -106,17 +106,37 @@ const dramaEpisode = computed(() => dramaParam('episode') ? drama.value?.episode
 const dramaScene = computed(() => dramaEpisode.value?.scenes.find(scene => scene.key === dramaParam('scene')))
 const dramaShot = computed(() => dramaScene.value?.shots.find(shot => shot.key === dramaParam('shot')))
 const dramaDeliverable = computed(() => drama.value?.deliverables.find(d => d.key === dramaParam('deliverable')))
+const dramaVersionLabel = computed(() => {
+  const vKey = dramaParam('version')
+  if (!vKey) return undefined
+  if (dramaMaterial.value) return dramaMaterial.value.versions.find(v => v.key === vKey)?.label || vKey
+  if (dramaShot.value) return dramaShot.value.versions.find(v => v.key === vKey)?.label || vKey
+  if (dramaDeliverable.value) return dramaDeliverable.value.versions.find(v => v.key === vKey)?.label || vKey
+  return vKey
+})
+const dramaSharedDetail = computed(() => {
+  if (dramaParam('file')) return project.value?.manifest.files.find(f => f.file_id === dramaParam('file'))?.path || '文件详情'
+  if (dramaParam('fixed')) return '固定修订详情'
+  if (dramaParam('run')) return '原生运行详情'
+  if (dramaParam('reference')) return '固定来源引用'
+  if (dramaParam('candidate')) return drama.value?.world_candidates.find(c => c.key === dramaParam('candidate'))?.name || '入库候选'
+  return undefined
+})
 const dramaCrumbs = computed(() => {
   if (!drama.value || !project.value || !dramaLocation.value) return []
+  const continuityShot = dramaParam('continuity')
+    ? drama.value.episodes.flatMap(ep => ep.scenes.flatMap(sc => sc.shots)).find(sh => sh.key === dramaParam('continuity'))
+    : undefined
   return dramaBreadcrumb(dramaLocation.value, {
     work: project.value.manifest.name,
     material: dramaMaterial.value?.name,
     episode: dramaEpisode.value?.title,
     scene: dramaScene.value?.title,
-    shot: dramaShot.value?.title,
+    shot: dramaShot.value?.title || continuityShot?.title,
     deliverable: dramaDeliverable.value?.title,
     state: dramaState.value?.name,
-    version: dramaParam('version') || undefined,
+    version: dramaVersionLabel.value,
+    detail: dramaSharedDetail.value,
   }).map(item => ({ label: item.label, to: dramaHref(item.to) }))
 })
 const entries = computed<Detail[]>(() => {
@@ -132,19 +152,19 @@ const entries = computed<Detail[]>(() => {
 const visibleEntries = computed(() => entries.value.filter(e => (e.title + ' ' + (e.overview || '')).toLocaleLowerCase().includes(query('find').trim().toLocaleLowerCase())))
 const detail = computed(() => entries.value.find(d => d.key === query('item')))
 const objectTitle = computed(() => dramaParam('file') ? project.value?.manifest.files.find(f => f.file_id === dramaParam('file'))?.path || '文件详情'
-  : dramaParam('fixed') ? '固定修订详情' : dramaParam('run') ? '原生运行详情' : dramaParam('reference') ? '固定来源引用' : dramaParam('candidate') ? '入库候选'
+  : dramaParam('fixed') ? '固定修订详情' : dramaParam('run') ? '原生运行详情' : dramaParam('reference') ? '固定来源引用' : dramaParam('candidate') ? drama.value?.world_candidates.find(c => c.key === dramaParam('candidate'))?.name || '入库候选'
   : dramaParam('lighting') ? '环境与灯光' : dramaParam('package') ? '交付包'
   : dramaParam('material') ? dramaMaterial.value?.name || '资料详情'
   : dramaParam('shot') ? dramaShot.value?.versions.find(v => v.key === dramaParam('version'))?.label || dramaShot.value?.title || '镜头详情'
   : dramaParam('deliverable') ? dramaDeliverable.value?.title || '成果详情'
-  : dramaParam('continuity') ? '连续性详情'
+  : dramaParam('continuity') ? drama.value?.episodes.flatMap(ep => ep.scenes.flatMap(sc => sc.shots)).find(sh => sh.key === dramaParam('continuity'))?.title || '连续性详情'
   : query('item') && activeTab.value?.key === 'cast' ? video.value?.cast.find(c => c.key === query('item'))?.name || '片中角色详情'
   : image.value?.works.find(w => w.key === query('item'))?.title || detail.value?.title)
 const dramaSubtitle = computed(() => {
   if (!drama.value) return ''
-  if (dramaMaterial.value) return [dramaKindName.value, dramaState.value?.name, dramaParam('version') ? `版本 ${dramaParam('version')}` : ''].filter(Boolean).join(' · ')
-  if (dramaShot.value) return [dramaEpisode.value?.title, dramaScene.value?.title, dramaShot.value.duration_seconds != null ? `${dramaShot.value.duration_seconds} 秒` : '', dramaParam('version') ? `版本 ${dramaParam('version')}` : ''].filter(Boolean).join(' · ')
-  if (dramaDeliverable.value) return [dramaDeliverable.value.versions.find(v => v.key === dramaDeliverable.value?.selected_version_key)?.label || '当前选用未整理', dramaDeliverable.value.delivery_record_file_ids.length ? '有交付记录' : '尚未登记实际交付回执', dramaParam('version') ? `版本 ${dramaParam('version')}` : ''].filter(Boolean).join(' · ')
+  if (dramaMaterial.value) return [dramaKindName.value, dramaState.value?.name, dramaVersionLabel.value ? `版本 ${dramaVersionLabel.value}` : ''].filter(Boolean).join(' · ')
+  if (dramaShot.value) return [dramaEpisode.value?.title, dramaScene.value?.title, dramaShot.value.duration_seconds != null ? `${dramaShot.value.duration_seconds} 秒` : '', dramaVersionLabel.value ? `版本 ${dramaVersionLabel.value}` : ''].filter(Boolean).join(' · ')
+  if (dramaDeliverable.value) return [dramaDeliverable.value.versions.find(v => v.key === dramaDeliverable.value?.selected_version_key)?.label || '当前选用未整理', dramaDeliverable.value.delivery_record_file_ids.length ? '有交付记录' : '尚未登记实际交付回执', dramaVersionLabel.value ? `版本 ${dramaVersionLabel.value}` : ''].filter(Boolean).join(' · ')
   const shots = drama.value.episodes.reduce((n, e) => n + e.scenes.reduce((n, s) => n + s.shots.length, 0), 0)
   const base = `${drama.value.episodes.length} 集 · ${shots} 镜 · ${dramaLocation.value?.tab === 'overview' ? '概览' : (activeTab.value?.label || '概览')}`
   if (dramaParam('view') === 'spaces') return `${base} · 场景白模与灯光`

@@ -143,7 +143,7 @@ function fileGallery(groupId: string, fileIds: string[], index: number, prefix: 
             <p v-else class="line-note muted">状态依据尚未整理。</p>
           </template>
 
-          <section v-if="tab === 'script'" class="panel manuscript">
+          <section v-if="tab === 'script' || material.definition_refs.length" class="panel manuscript">
             <span class="eyebrow">文字设定与生成依据</span>
             <h2>设定说明</h2>
             <DramaProse :text="material.description || '说明尚未填写。'" :drama="drama" />
@@ -155,7 +155,7 @@ function fileGallery(groupId: string, fileIds: string[], index: number, prefix: 
             <p v-if="material.kind === 'character'" class="muted">人物身份基线用于核对同一张脸与体型；下列服装造型分别保存各阶段的衣着、剧情状态和制作版本。</p>
             <div class="material-grid">
               <article v-for="look in relatedLooks" :key="look.key" class="look-card">
-                <RouterLink :to="materialLink(look, materialPreview(look).version?.key, materialPreview(look).version?.state_key)">
+                <RouterLink :to="materialLink(look, undefined, materialPreview(look).version?.state_key)">
                   <ProjectMedia v-if="materialPreview(look).fileId" :reader="reader" :file-id="materialPreview(look).fileId" kind="image" :label="look.name" thumbnail />
                   <h3>{{ look.name }}</h3>
                 </RouterLink>
@@ -188,7 +188,6 @@ function fileGallery(groupId: string, fileIds: string[], index: number, prefix: 
             <h2>{{ tab === 'materials' ? '设定与关联' : '关联内容' }}</h2>
             <RouterLink v-for="g in related" :key="g.key" class="related-link" :to="materialLink(g)">{{ g.name }} →</RouterLink>
             <p v-if="!related.length" class="muted">与本项目的剧本及配套设定一同审阅。</p>
-            <RouterLink class="related-link" :to="link({ tab: tab === 'materials' ? 'script' : 'materials', version: undefined, compare: undefined })">{{ tab === 'materials' ? '阅读文字设定' : '查看制作素材' }} →</RouterLink>
           </section>
 
           <section v-if="material.kind === 'music'" class="panel">

@@ -17,18 +17,45 @@ test('legacy bookmarks preserve the fixed revision, filters and app route', () =
   assert.equal(canonicalRoute('project', `/projects?category=ai_short_drama&project=${a}&revision=${b}&tab=location&material=bath&state=day&find=room`), `/ai_short_drama/${a}/materials/location/bath/day?revision=${b}&q=room`)
   assert.equal(canonicalRoute('project', `/ai_short_drama?project=${a}&revision=${b}&tab=location&material=bath&state=day&returnMaterial=x&compare=v1`), `/ai_short_drama/${a}/materials/location/bath/day?revision=${b}`)
 })
-test('drama breadcrumbs project 7 levels, include historical version/package/continuity and recall list filters', () => {
+test('drama breadcrumbs match top-level business tabs, include historical version/package/continuity/shared detail and recall list filters', () => {
   const listView = parseDramaPath(`/ai_short_drama/${a}/materials/location?revision=${b}&q=bath&status=ready`)!
   rememberDramaListContext(listView)
+  assert.deepEqual(dramaBreadcrumb(listView, { work: '密室样片' }).map(c => c.label), ['项目管理', '短剧制作', '密室样片', '场景'])
+
+  for (const [kind, label] of [['character', '人物'], ['wardrobe', '服装造型'], ['prop', '道具'], ['location', '场景'], ['sound', '声音'], ['music', '配乐']] as const) {
+    const kView = parseDramaPath(`/ai_short_drama/${a}/materials/${kind}?revision=${b}`)!
+    assert.deepEqual(dramaBreadcrumb(kView, { work: '密室样片' }).map(c => c.label), ['项目管理', '短剧制作', '密室样片', label])
+  }
+
   const detailView = parseDramaPath(`/ai_short_drama/${a}/materials/location/bath/day?revision=${b}&version=v2`)!
   const crumbs = dramaBreadcrumb(detailView, { work: '密室样片', material: '废弃浴室', state: '日景', version: 'V2' })
-  assert.deepEqual(crumbs.map(c => c.label), ['项目管理', '短剧制作', '密室样片', '素材', '场景', '废弃浴室', '日景', 'V2'])
-  assert.equal(crumbs[4].to.query.q, 'bath')
-  assert.equal(crumbs[4].to.query.status, 'ready')
+  assert.deepEqual(crumbs.map(c => c.label), ['项目管理', '短剧制作', '密室样片', '场景', '废弃浴室', '日景', 'V2'])
+  assert.equal(crumbs[3].to.query.q, 'bath')
+  assert.equal(crumbs[3].to.query.status, 'ready')
+  assert.equal(crumbs[4].to.state, undefined)
+
   const pkgView = parseDramaPath(`/ai_short_drama/${a}/delivery/trailer/package?revision=${b}`)!
   assert.deepEqual(dramaBreadcrumb(pkgView, { work: '密室样片', deliverable: '样片预告' }).map(c => c.label), ['项目管理', '短剧制作', '密室样片', '成果与交付', '样片预告', '交付包'])
+
+  const contListView = parseDramaPath(`/ai_short_drama/${a}/script/continuity?revision=${b}`)!
+  assert.deepEqual(dramaBreadcrumb(contListView, { work: '密室样片' }).map(c => c.label), ['项目管理', '短剧制作', '密室样片', '连续性'])
   const contView = parseDramaPath(`/ai_short_drama/${a}/script/continuity/sh01?revision=${b}`)!
-  assert.deepEqual(dramaBreadcrumb(contView, { work: '密室样片', shot: '镜头一' }).map(c => c.label), ['项目管理', '短剧制作', '密室样片', '剧本', '连续性', '镜头一'])
+  assert.deepEqual(dramaBreadcrumb(contView, { work: '密室样片', shot: '镜头一' }).map(c => c.label), ['项目管理', '短剧制作', '密室样片', '连续性', '镜头一'])
+
+  const scriptRootView = parseDramaPath(`/ai_short_drama/${a}/script/body?revision=${b}`)!
+  assert.deepEqual(dramaBreadcrumb(scriptRootView, { work: '密室样片', episode: '第一集' }).map(c => c.label), ['项目管理', '短剧制作', '密室样片', '剧本正文'])
+  const scriptSceneView = parseDramaPath(`/ai_short_drama/${a}/script/body/ep01/sc01?revision=${b}`)!
+  const scriptSceneCrumbs = dramaBreadcrumb(scriptSceneView, { work: '密室样片', episode: '第一集', scene: '第一场' })
+  assert.deepEqual(scriptSceneCrumbs.map(c => c.label), ['项目管理', '短剧制作', '密室样片', '剧本正文', '第一集', '第一场'])
+  assert.equal(scriptSceneCrumbs[4].to.scene, undefined)
+
+  const prodRootView = parseDramaPath(`/ai_short_drama/${a}/production/shots?revision=${b}`)!
+  assert.deepEqual(dramaBreadcrumb(prodRootView, { work: '密室样片', episode: '第一集' }).map(c => c.label), ['项目管理', '短剧制作', '密室样片', '镜头制作'])
+  const spacesView = parseDramaPath(`/ai_short_drama/${a}/production/spaces?revision=${b}`)!
+  assert.deepEqual(dramaBreadcrumb(spacesView, { work: '密室样片', episode: '第一集' }).map(c => c.label), ['项目管理', '短剧制作', '密室样片', '镜头制作', '场景白模与灯光'])
+
+  const filesDetailView = parseDramaPath(`/ai_short_drama/${a}/files?revision=${b}&file=f1`)!
+  assert.deepEqual(dramaBreadcrumb(filesDetailView, { work: '密室样片', detail: 'script.md' }).map(c => c.label), ['项目管理', '短剧制作', '密室样片', '文件', 'script.md'])
 })
 test('short-drama project tabs keep the work instead of falling back to character', () => {
   const here = `/ai_short_drama/${a}?revision=${b}`
