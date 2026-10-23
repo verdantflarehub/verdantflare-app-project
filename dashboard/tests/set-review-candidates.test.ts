@@ -32,6 +32,7 @@ test('candidate selection reads the requested revision and maps actual location/
   const f = fixture(), result = await loadReviewCandidates(f.sdk, fixed)
   assert.equal(result.items.length, 1); assert.equal(result.items[0].title, '县署'); assert.equal(result.items[0].label, '县署 · 日景 · 历史图像版')
   assert.deepEqual(result.items[0].locator, fixed); assert.equal(result.nextCursor, '')
+  assert.equal(result.workTitle, '固定作品')
   assert.deepEqual(f.requests[0].body, { project_id: id(1), revision_id: id(2) })
   assert.deepEqual((f.reads[0] as Record<string, Json>).access, { project_id: id(1), project_revision_id: id(2) })
   assert.equal(f.contexts.size, 0); assert.equal(f.lifecycle.size, 0)
@@ -51,7 +52,7 @@ test('unverified document bytes cannot become selectable candidates', async () =
 
 test('missing project business document remains a real empty list and does not fabricate versions', async () => {
   const f = fixture(); f.project.manifest.domain_documents = []
-  assert.deepEqual(await loadReviewCandidates(f.sdk, fixed), { items: [], nextCursor: '' }); assert.equal(f.reads.length, 0)
+  assert.deepEqual(await loadReviewCandidates(f.sdk, fixed), { items: [], nextCursor: '', workTitle: '固定作品' }); assert.equal(f.reads.length, 0)
 })
 
 test('the current legacy location keeps its real title without offering other unmapped locations for comparison', async () => {

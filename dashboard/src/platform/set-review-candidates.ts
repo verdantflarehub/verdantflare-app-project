@@ -5,7 +5,7 @@ import type { AppSDK } from './types.ts'
 
 export interface ReviewCandidate { key: string; label: string; title?: string; locator: ReviewLocator }
 export interface ReviewCandidateOptions { signal?: AbortSignal; cursor?: string }
-export interface ReviewCandidatePage { items: ReviewCandidate[]; nextCursor: string }
+export interface ReviewCandidatePage { items: ReviewCandidate[]; nextCursor: string; workTitle?: string }
 type ProjectLocator = Extract<ReviewLocator, { kind: 'project' }>
 
 /** Enumerate only mapped versions actually present in the requested immutable revision. */
@@ -48,7 +48,7 @@ export async function loadReviewCandidates(sdk: AppSDK, locator: ReviewLocator, 
     if (new Set(files.map(file => file.file_id)).size !== files.length || files.some(file => !reviewID(file.file_id) || !file.content_ref || ![file.content_ref.store_id, file.content_ref.artifact_id, file.content_ref.version_id].every(reviewID))) throw new ReviewError('INVALID_RESPONSE')
     const documents = project.manifest.domain_documents.filter(item => item.document_type === 'project-content')
     if (documents.length > 1) throw new ReviewError('INVALID_RESPONSE')
-    if (!documents.length) return { items: [], nextCursor: '' }
+    if (!documents.length) return { items: [], nextCursor: '', workTitle: project.manifest.name }
     const file = files.find(item => item.file_id === documents[0].file_id)
     if (!file) throw new ReviewError('INVALID_RESPONSE')
     const read = await client.call<{ mode: string; text: string; version: { store_id: string; artifact_id: string; version_id: string; size: number; sha256: string } }>('artifact.read', { mode: 'text', content_ref: file.content_ref, access: { project_id: fixed.project_id, project_revision_id: fixed.content_revision_id } })
@@ -61,7 +61,7 @@ export async function loadReviewCandidates(sdk: AppSDK, locator: ReviewLocator, 
     active()
     if (digest !== version.sha256) throw new ReviewError('INVALID_RESPONSE')
     const content = parseProjectContent(read.text, project)
-    return { items: projectReviewCandidates(project, content, fixed), nextCursor: '' }
+    return { items: projectReviewCandidates(project, content, fixed), nextCursor: '', workTitle: project.manifest.name }
   } finally {
     options.signal?.removeEventListener('abort', cancel)
     stopLife(); stopContext(); client.dispose()
