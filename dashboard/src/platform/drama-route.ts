@@ -34,7 +34,7 @@ export function dramaQuery(params: URLSearchParams): DramaQuery {
     if (!value) continue
     if (key === 'revision' && !uuid.test(value)) continue
     if (key === 'version' && !isDramaKey(value)) continue
-    if (key === 'status' && !['all', 'ready', 'missing'].includes(value)) continue
+    if (key === 'status' && !['all', 'ready', 'previs', 'missing'].includes(value)) continue
     if (key === 'sort' && value !== 'name') continue
     if (key === 'shown' && !/^\d{1,6}$/.test(value)) continue
     if (key === 'deleted' && value !== 'true') continue

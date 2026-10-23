@@ -282,3 +282,66 @@ test('ProjectMedia thumbnail mode uses server thumbnail, falls back on failure/4
   const oversizedHtml = await render.render('components/ProjectMedia.vue', { reader: oversizedReader, fileId: id(10), kind: 'image', label: '超大图条目', thumbnail: true })
   assert.match(oversizedHtml, /原图较大 · 点击查看/)
 })
+
+test('drama production view renders 16:9 storyboard wall, 4-tier camera previs fallback, single-line 36px toolbar and scene filter', async () => {
+  const render = renderer(), reader = dramaReader(), drama = reader.content.ai_short_drama!
+  const ep = drama.episodes[0], sc1 = ep.scenes[0], sh1 = sc1.shots[0]
+  sh1.duration_seconds = 5
+  sh1.overview = '**画面：** 荧光灯管频闪点亮，俯拍整间废弃浴室。\n**动作：** 铁链拖地声回荡。'
+  sh1.reference_file_ids = [id(10)]
+  reader.project.manifest.files[0].path = 'previs/s01_c1.mp4'
+  ep.scenes.push({
+    key: 'scene02',
+    title: '第二场 · 原始演员表演',
+    overview: '第二场说明',
+    definition_refs: [],
+    shots: [{
+      key: 'shot02',
+      title: 'S09 C6',
+      overview: '戈登抓起钢锯怒吼。',
+      script_anchor: null,
+      duration_seconds: 3,
+      image_file_id: null,
+      reference_file_ids: [],
+      result_file_ids: [],
+      selected_result_file_id: null,
+      continuity_keys: [],
+      run_ref: null,
+      review: { state: 'unreviewed', record_file_id: null },
+      definition_refs: [],
+      generation_record_file_ids: [],
+      segments: [],
+      versions: [],
+      selected_versions: [],
+    }],
+  })
+  const mediaReader = {
+    ...reader,
+    file: (fileId: string) => reader.project.manifest.files.find(f => f.file_id === fileId)!,
+    media: async () => 'blob:previs-video',
+  }
+
+  const wallHtml = await render.render('components/drama/ShortDramaProject.vue', { reader: mediaReader, tab: 'production' }, `/ai_short_drama/${id(1)}/production/shots`)
+  assert.match(wallHtml, /shot-wall-grid/)
+  assert.match(wallHtml, /shot-stage/)
+  assert.match(wallHtml, /机位预演/)
+  assert.match(wallHtml, /荧光灯管频闪点亮/)
+  assert.match(wallHtml, /戈登抓起钢锯怒吼/)
+  assert.match(wallHtml, /aria-label="分集"/)
+  assert.match(wallHtml, /aria-label="场次筛选"/)
+  assert.match(wallHtml, /aria-label="制作筛选"/)
+  assert.match(wallHtml, /场景白模与灯光/)
+  assert.doesNotMatch(wallHtml, /<h2>镜头制作<\/h2>/)
+  assert.match(render.css(), /minmax\(280px, 1fr\)/)
+  assert.match(render.css(), /aspect-ratio: 16 \/ 9/)
+
+  // Scene filter path only renders the selected scene in the storyboard wall (while keeping scene options in the select)
+  const sceneFiltered = await render.render('components/drama/ShortDramaProject.vue', { reader: mediaReader, tab: 'production' }, `/ai_short_drama/${id(1)}/production/shots/${ep.key}/${sc1.key}`)
+  assert.match(sceneFiltered, /<h3[^>]*>雨夜船舱<\/h3>/)
+  assert.doesNotMatch(sceneFiltered, /<h3[^>]*>第二场 · 原始演员表演<\/h3>|S09 C6/)
+
+  // Status filter previs only shows shots with camera previs / whitebox
+  const previsFiltered = await render.render('components/drama/ShortDramaProject.vue', { reader: mediaReader, tab: 'production' }, `/ai_short_drama/${id(1)}/production/shots?status=previs`)
+  assert.match(previsFiltered, /铜戒特写/)
+  assert.doesNotMatch(previsFiltered, /S09 C6/)
+})

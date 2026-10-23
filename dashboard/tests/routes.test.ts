@@ -38,6 +38,7 @@ test('short-drama project tabs keep the work instead of falling back to characte
   assert.equal(location?.path.includes('/projects'), false)
   assert.deepEqual(dramaBrowserTarget(here, { ...cleared, tab: 'tasks' }), { path: `/ai_short_drama/${a}/production/shots`, query: { revision: b } })
   assert.deepEqual(dramaBrowserTarget(here, { ...cleared, tab: 'production' }), { path: `/ai_short_drama/${a}/production/shots`, query: { revision: b } })
+  assert.deepEqual(dramaBrowserTarget(`/ai_short_drama/${a}/production/shots?revision=${b}`, { status: 'previs' }), { path: `/ai_short_drama/${a}/production/shots`, query: { revision: b, status: 'previs' } })
   assert.deepEqual(dramaBrowserTarget(here, { ...cleared, tab: 'script' }), { path: `/ai_short_drama/${a}/script/body`, query: { revision: b } })
   assert.deepEqual(dramaBrowserTarget(`/ai_short_drama/${a}/materials/location?revision=${b}`, { q: '浴室', shown: undefined }), { path: `/ai_short_drama/${a}/materials/location`, query: { revision: b, q: '浴室' } })
   assert.deepEqual(dramaBrowserTarget(here, { project: undefined, category: 'ai_short_drama', tab: undefined, revision: undefined }), { path: '/ai_short_drama', query: {} })

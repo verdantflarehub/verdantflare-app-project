@@ -4,7 +4,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 import { parseProjectContent } from '../src/platform/project-content.ts'
-import { materialPreview, dramaText, documentSection } from '../src/platform/drama-presentation.ts'
+import { materialPreview, shotPreview, shotSummary, dramaText, documentSection } from '../src/platform/drama-presentation.ts'
 
 const frontend = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 // Design remains the contract source; do not duplicate its fixtures in the application.
@@ -297,4 +297,48 @@ test('fixed Markdown references isolate their authored section including nested 
   assert.throws(() => documentSection(text, 'missing'), /没有对应章节/)
   assert.equal(documentSection(text), text)
   assert.equal(documentSection('## My Heading\nBody\n## Next\nOther', 'my-heading'), '## My Heading\nBody')
+})
+
+test('shotPreview resolves 4-tier visual hierarchy and shotSummary cleans authored Markdown without locking on 时空', () => {
+  const baseShot: any = {
+    key: 's01', title: 'S01 C1', overview: '**画面：** 荧光灯管频闪点亮，俯拍整间废弃浴室。\n**动作：** 亚当在浴缸中猛然惊醒。',
+    script_anchor: null, duration_seconds: 2, image_file_id: null, reference_file_ids: [], result_file_ids: [],
+    selected_result_file_id: null, continuity_keys: [], run_ref: null, review: { state: 'unreviewed', record_file_id: null },
+    definition_refs: [], generation_record_file_ids: [], segments: [], versions: [], selected_versions: [],
+  }
+  const paths: Record<string, string> = {
+    'ref-previs': 'previs/s01_c1.mp4',
+    'ref-doc': 'docs/s01_notes.md',
+    'img-1': 'frames/s01.png',
+    'res-1': 'outputs/s01_take1.mp4',
+    'ver-v1': 'versions/s01_v1.mp4',
+    'ver-v2': 'versions/s01_v2.mp4',
+  }
+  const filePath = (fileId: string) => paths[fileId]
+
+  // Tier 4: Slate fallback
+  assert.deepEqual(shotPreview(baseShot, filePath), { tier: 'missing', kind: null, selected: false, badge: '待制作' })
+
+  // Tier 3: Camera previs in reference_file_ids (skipping non-media .md)
+  const previsShot = { ...baseShot, reference_file_ids: ['ref-doc', 'ref-previs'] }
+  assert.deepEqual(shotPreview(previsShot, filePath), { tier: 'previs', kind: 'video', fileId: 'ref-previs', selected: false, badge: '机位预演' })
+
+  // Tier 2: Direct result or image_file_id
+  const imageShot = { ...previsShot, image_file_id: 'img-1' }
+  assert.deepEqual(shotPreview(imageShot, filePath), { tier: 'ready', kind: 'image', fileId: 'img-1', selected: false, badge: '镜头静帧' })
+  const resultShot = { ...imageShot, result_file_ids: ['res-1'] }
+  assert.deepEqual(shotPreview(resultShot, filePath), { tier: 'ready', kind: 'video', fileId: 'res-1', selected: false, badge: '已有结果' })
+
+  // Tier 1: Versions (latest vs selected)
+  const v1 = { key: 'v1', label: 'V1', purpose: 'shot_video', file_refs: [{ file_id: 'ver-v1', purpose: 'video' }] }
+  const v2 = { key: 'v2', label: 'V2', purpose: 'shot_video', file_refs: [{ file_id: 'ver-v2', purpose: 'video' }] }
+  const versionedShot = { ...resultShot, versions: [v1, v2], selected_versions: [{ purpose: 'shot_video', version_key: 'v1' }] }
+  assert.equal(shotPreview(versionedShot, filePath).fileId, 'ver-v1')
+  assert.equal(shotPreview(versionedShot, filePath).selected, true)
+  assert.equal(shotPreview(versionedShot, filePath).badge, '已选用 · V1')
+
+  // shotSummary works with **画面：** / **动作：** as well as plain prose
+  assert.equal(shotSummary(baseShot.overview), '荧光灯管频闪点亮，俯拍整间废弃浴室。 · 亚当在浴缸中猛然惊醒。')
+  assert.equal(shotSummary('全黑画面，工业噪音切入。'), '全黑画面，工业噪音切入。')
+  assert.match(shotSummary(''), /查看本镜分镜依据/)
 })
