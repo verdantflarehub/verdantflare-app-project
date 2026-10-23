@@ -101,10 +101,10 @@ async function prepareDownload() {
   try { const read = await props.reader.download(props.fileId); if (current === generation) downloadPath.value = read.content_path }
   catch (cause) { if (current === generation) error.value = readerError(cause) }
 }
-watch(() => [props.reader, props.fileId, props.kind], () => {
+watch(() => [props.reader, props.fileId, props.kind, props.thumbnail], () => {
   generation++; source.value = ''; error.value = ''; downloadPath.value = ''; busy.value = false
   closeLightbox()
-  if (props.kind === 'image' && props.fileId) void load()
+  if ((props.kind === 'image' || (props.kind === 'video' && props.thumbnail)) && props.fileId) void load()
 }, { immediate: true })
 onBeforeUnmount(() => { generation++; closeLightbox() })
 </script>
@@ -115,7 +115,12 @@ onBeforeUnmount(() => { generation++; closeLightbox() })
     <div v-if="kind === 'audio' && (source || fileId)" class="waveform-strip" data-gamma="0.7" aria-hidden="true">
       <span v-for="(barHeight, idx) in waveformBars" :key="idx" class="waveform-bar" :style="{ height: `${barHeight}px` }" />
     </div>
-    <button v-if="kind === 'video' && thumbnail" type="button" class="video-open" :aria-label="`放大${label}`" :disabled="busy" @click="openVideo">{{ busy ? '正在读取…' : '放大查看' }}</button>
+    <button v-if="kind === 'video' && thumbnail && fileId" type="button" class="video-open" :class="{ loaded: !!source }" :aria-label="`放大${label}`" :disabled="busy" @click="openVideo">
+      <video v-if="source" class="thumb-video" :src="source" muted playsinline preload="auto" :aria-label="label" @loadedmetadata="($event.target as HTMLVideoElement).currentTime = 0.001" @error="error = '浏览器无法播放此视频。'; source = ''" />
+      <span v-else-if="busy" role="status">正在读取…</span>
+      <span v-else-if="error" role="alert">{{ error }}</span>
+      <span class="video-open-badge">放大查看</span>
+    </button>
     <template v-else-if="source">
       <button v-if="kind === 'image' && thumbnail" type="button" class="image-open" :aria-label="`放大${label}`" @click="openLightbox()"><img :src="source" :alt="label" :style="objectPosition ? { objectPosition: `${objectPosition.x}% ${objectPosition.y}%` } : undefined" @error="error = '图片解码失败。'; source = ''"></button>
       <button v-else-if="kind === 'image'" type="button" class="image-open" :aria-label="`放大${label}`" @click="openLightbox()"><img :src="source" :alt="label" @error="error = '图片解码失败。'; source = ''"></button>
@@ -153,7 +158,9 @@ onBeforeUnmount(() => { generation++; closeLightbox() })
 <style scoped>
 .project-media { min-width: 0; }
 .image, .video { border-radius: 12px; background: var(--subtle); overflow: hidden; border: 0.5px solid var(--vf-hairline-outer, var(--line)); }
-.image-open, .video-open { display: grid; place-items: center; width: 100%; height: 100%; min-height: 0; border: 0; background: transparent; color: inherit; cursor: zoom-in; }
+.image-open, .video-open { position: relative; display: grid; place-items: center; width: 100%; height: 100%; min-height: 0; padding: 0; border: 0; background: transparent; color: inherit; cursor: zoom-in; }
+.video-open .thumb-video { pointer-events: none; }
+.video-open.loaded .video-open-badge { position: absolute; right: 8px; bottom: 8px; padding: 3px 8px; border-radius: 6px; background: rgba(15, 20, 18, 0.72); color: #fff; font-size: 12px; line-height: 1.4; pointer-events: none; }
 .video-dialog video { width: min(92vw, 1280px); max-height: 80vh; object-fit: contain; background: #111; }
 img { display: block; width: 100%; height: auto; }
 .thumbnail { aspect-ratio: 16 / 10; }

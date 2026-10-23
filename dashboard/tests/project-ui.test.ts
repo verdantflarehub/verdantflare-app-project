@@ -104,6 +104,12 @@ test('all drama business pages render and scene, lighting and package deep links
     const html = await render.render('components/drama/ShortDramaProject.vue', { reader, tab }, `/projects?tab=${tab}`)
     assert.match(html, /workspace-body/, tab)
     assert.doesNotMatch(html, /<nav[^>]*category-rail/, 'business must use the common project menus')
+    if (tab === 'character') {
+      assert.match(html, /material-grid/)
+      assert.match(html, /kind-character/)
+      assert.match(render.css(), /minmax\(220px,1fr\)/)
+      assert.match(render.css(), /aspect-ratio:3\/4/)
+    }
   }
   const location = drama.globals.find(g => g.kind === 'location')!
   assert(location)
@@ -205,7 +211,10 @@ test('interaction physics tokens, 48-bar 0.7 Gamma waveform, lightbox affine zoo
   assert.equal((audioHtml.match(/class="waveform-bar"/g) || []).length, 48)
   const imageHtml = await render.render('components/ProjectMedia.vue', { reader, fileId: id(10), kind: 'image', label: '角色设定图' })
   assert.match(imageHtml, /zoom-stage/); assert.match(imageHtml, /zoom-readout/); assert.match(imageHtml, /1:1/)
-  const videoThumb = await render.render('components/ProjectMedia.vue', { reader, fileId: id(10), kind: 'video', label: '机位预演', thumbnail: true })
+  const mediaCalls: Array<[string, string]> = []
+  const videoReader = { ...reader, media: async (fileId: string, kind: string) => { mediaCalls.push([fileId, kind]); return 'blob:video-preview' } }
+  const videoThumb = await render.render('components/ProjectMedia.vue', { reader: videoReader, fileId: id(10), kind: 'video', label: '机位预演', thumbnail: true })
+  assert.deepEqual(mediaCalls, [[id(10), 'video']])
   assert.match(videoThumb, /放大查看/); assert.match(videoThumb, /video-dialog/); assert.match(videoThumb, /放大机位预演/)
   const parent = structuredClone(reader.project)
   const current = structuredClone(reader.project)
