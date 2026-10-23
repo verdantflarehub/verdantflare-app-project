@@ -3,11 +3,12 @@ const keyPattern = /^[A-Za-z0-9_-]+$/
 const kinds = new Set(['character', 'wardrobe', 'prop', 'location', 'sound', 'music'])
 const scriptKinds = new Set(['character', 'location', 'wardrobe', 'prop', 'continuity', 'sound', 'music'])
 const shared = new Set(['files', 'revisions', 'runs', 'references'])
-const queryKeys = ['revision', 'version', 'q', 'status', 'sort', 'shown', 'deleted'] as const
+const queryKeys = ['revision', 'version', 'state', 'target', 'q', 'status', 'sort', 'shown', 'deleted'] as const
 
-export interface DramaQuery { revision?: string; version?: string; q?: string; status?: string; sort?: string; shown?: string; deleted?: string }
+export interface DramaQuery { revision?: string; version?: string; state?: string; target?: string; q?: string; status?: string; sort?: string; shown?: string; deleted?: string }
 export interface DramaView {
   projectId?: string
+  review?: boolean
   tab: string
   kind?: string
   material?: string
@@ -33,7 +34,8 @@ export function dramaQuery(params: URLSearchParams): DramaQuery {
     const value = one(params, key)
     if (!value) continue
     if (key === 'revision' && !uuid.test(value)) continue
-    if (key === 'version' && !isDramaKey(value)) continue
+    if ((key === 'version' || key === 'state') && !isDramaKey(value)) continue
+    if (key === 'target' && !/^[a-f0-9]{64}$/.test(value)) continue
     if (key === 'status' && !['all', 'ready', 'previs', 'missing'].includes(value)) continue
     if (key === 'sort' && value !== 'name') continue
     if (key === 'shown' && !/^\d{1,6}$/.test(value)) continue
@@ -83,6 +85,7 @@ function parseScript(projectId: string, parts: string[], query: DramaQuery): Dra
 
 function parseMaterial(projectId: string, parts: string[], query: DramaQuery): DramaView {
   if (!parts.length || !kinds.has(parts[0]) || parts.slice(1).some(part => part !== 'lighting' && !isDramaKey(part))) return { projectId, tab: 'character', kind: 'character', query }
+  if (parts.length === 3 && parts[0] === 'location' && parts[2] === 'review') return { projectId, tab: 'location', kind: 'location', material: parts[1], state: query.state, review: true, query }
   const [kind, material, state, tail] = parts
   const lighting = kind === 'location' && tail === 'lighting' ? state : undefined
   return { projectId, tab: kind, kind, material, state: lighting ? state : state, lighting, query }
@@ -156,7 +159,7 @@ export function dramaBrowserTarget(currentPath: string, change: Record<string, s
 
 export function dramaHref(view: DramaView): string {
   const params = new URLSearchParams()
-  for (const key of queryKeys) if (view.query[key]) params.set(key, view.query[key]!)
+  for (const key of queryKeys) if (view.query[key] && (view.review || !['state','target'].includes(key))) params.set(key, view.query[key]!)
   const search = params.toString()
   return dramaPath(view) + (search ? '?' + search : '')
 }
@@ -181,6 +184,7 @@ export function dramaPath(view: DramaView): string {
   const kind = view.kind && kinds.has(view.kind) ? view.kind : 'character'
   let path = `${base}/materials/${kind}`
   if (view.material) path += '/' + view.material
+  if (view.review && kind === 'location' && view.material) return path + '/review'
   if (view.state) path += '/' + view.state
   if (view.lighting) path += '/lighting'
   return path

@@ -44,6 +44,7 @@ type Principal struct {
 	OrganizationID string `json:"organization_id"`
 	SubjectID      string `json:"subject_id"`
 	RequestID      string `json:"request_id"`
+	ReviewOrigin   string `json:"-"`
 }
 
 func (p Principal) Valid() bool {
@@ -220,4 +221,5 @@ type preparePlan struct {
 	Invalidated     []string                `json:"invalidated_selections"`
 	Authorization   coordination.Plan       `json:"authorization,omitempty"`
 	Operation       *coordination.Operation `json:"operation,omitempty"`
+	Review          *reviewPlan             `json:"set_review,omitempty"`
 }

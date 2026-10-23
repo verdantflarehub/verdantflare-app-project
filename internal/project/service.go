@@ -33,6 +33,9 @@ func NewService(ctx context.Context, db *pgxpool.Pool, content Artifact, assets 
 	if err := migrations.CheckLifecycle(ctx, db); err != nil {
 		return nil, err
 	}
+	if err := migrations.CheckSetReview(ctx, db); err != nil {
+		return nil, err
+	}
 	s := &Service{db: db, content: content, assets: assets, coord: coord, workers: make(chan struct{}, 8)}
 	return s, nil
 }
@@ -377,6 +380,12 @@ func (s *Service) resume(ctx context.Context, p Principal, id, commit string) (R
 	if c.Plan.Manifest.Validate() != nil {
 		return s.terminal(ctx, p, c, "failed", ErrInvalid)
 	}
+	if e = s.guardSetReviews(ctx, p, c); e != nil {
+		if errors.Is(e, ErrInvalid) || errors.Is(e, ErrForbidden) || errors.Is(e, ErrTargetMismatch) {
+			return s.terminal(ctx, p, c, "failed", e)
+		}
+		return Result{}, e
+	}
 	refs, e := s.checkContents(ctx, p, c.Plan.Manifest, c.Expected)
 	if e != nil {
 		if errors.Is(e, ErrInvalid) || errors.Is(e, ErrNotFound) || errors.Is(e, ErrForbidden) {
@@ -418,7 +427,7 @@ func (s *Service) resume(ctx context.Context, p Principal, id, commit string) (R
 	return s.publish(ctx, p, c)
 }
 func errorCode(code string) error {
-	for _, e := range []error{ErrInvalid, ErrNotFound, ErrForbidden, ErrConflict, ErrNotReady} {
+	for _, e := range []error{ErrInvalid, ErrNotFound, ErrForbidden, ErrConflict, ErrNotReady, ErrReviewConflict, ErrTargetMismatch, ErrReviewScope, ErrLegacyTarget} {
 		if code == e.Error() {
 			return e
 		}
@@ -568,6 +577,13 @@ func (s *Service) publish(ctx context.Context, p Principal, c commitRecord) (Res
 	data, _ := json.Marshal(result)
 	_, e = tx.Exec(ctx, `INSERT INTO studio.project_revisions(revision_id,organization_id,project_id,parent_revision_id,manifest_ref,manifest_json,created_by,commit_id) VALUES($1,$2,$3,NULLIF($4,'')::uuid,$5,$6,$7,$8)`, c.Revision, p.OrganizationID, c.ProjectID, c.Expected, ref, manifest, p.SubjectID, c.CommitID)
 	if e != nil {
+		return Result{}, e
+	}
+	if e = s.publishReview(ctx, tx, p, c); e != nil {
+		if errors.Is(e, ErrReviewConflict) {
+			_ = tx.Rollback(ctx)
+			return s.terminal(ctx, p, c, "failed", e)
+		}
 		return Result{}, e
 	}
 	_, e = tx.Exec(ctx, "UPDATE studio.projects SET head_revision_id=$1,name=$2,category=$3,status=$4 WHERE organization_id=$5 AND project_id=$6", c.Revision, result.Manifest.Name, result.Manifest.Category, result.Manifest.Status, p.OrganizationID, c.ProjectID)

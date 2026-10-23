@@ -2,7 +2,14 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { canonicalRoute, legacyStudioTarget, nativeRunTarget, projectTarget, worldTarget, useAssetTarget } from '../src/platform/route-links.ts'
 import { dramaBreadcrumb, dramaBrowserTarget, parseDramaPath, rememberDramaListContext } from '../src/platform/drama-route.ts'
+import { reviewPath } from '../src/platform/set-review.ts'
 const a = '01900000-0000-7000-8000-000000000001', b = '01900000-0000-7000-8000-000000000002'
+test('fixed review path is canonical before host echo and keeps state outside the reserved review suffix', () => {
+  const path = reviewPath({kind:'project',project_id:a,content_revision_id:b,material_key:'street',state_key:'day',version_key:'v1'},'a'.repeat(64))
+  assert.equal(canonicalRoute('project',path),path)
+  assert.equal(parseDramaPath(path)?.review,true)
+  assert.equal(parseDramaPath(path)?.state,'day')
+})
 test('legacy bookmarks preserve the fixed revision, filters and app route', () => {
   const path = `/projects?project=${a}&revision=${b}&category=video&q=summer&tab=cast&item=lead`
   assert.deepEqual(legacyStudioTarget(path), { appId: 'project', path })

@@ -1,6 +1,7 @@
 import { createApp, h } from 'vue'
 import { createRouter, RouterView } from 'vue-router'
 import Browser from './pages/ProjectBrowser.vue'
+import SetReviewPage from './pages/SetReviewPage.vue'
 import WorkspacePage from './pages/WorkspacePage.vue'
 import UseAssetPage from './pages/UseAssetPage.vue'
 import PublicationPage from './pages/PublicationPage.vue'
@@ -19,6 +20,7 @@ async function mount() {
     { path: '/', redirect: '/projects' },
     { path: '/projects', component: Browser },
     { path: '/ai_short_drama', component: Browser },
+    { path: '/ai_short_drama/:projectId/materials/location/:materialKey/review', component: SetReviewPage },
     { path: '/ai_short_drama/:pathMatch(.*)*', component: Browser },
     { path: '/create', component: CreateProjectPage },
     { path: '/create/from-prompt', component: CreateFromPromptPage },

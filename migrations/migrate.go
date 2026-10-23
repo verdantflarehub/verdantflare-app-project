@@ -87,5 +87,11 @@ func ApplyFresh(ctx context.Context, db *pgxpool.Pool, projectFence, worldFence 
 	if _, err = tx.Exec(ctx, "INSERT INTO studio.project_extensions VALUES('lifecycle',$1)", lifecycleDigest()); err != nil {
 		return err
 	}
+	if _, err = tx.Exec(ctx, setReviewSQL); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, "INSERT INTO studio.project_extensions VALUES('set_review',$1)", setReviewDigest()); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
 }

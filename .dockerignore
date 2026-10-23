@@ -7,5 +7,4 @@
 dashboard/node_modules/
 dashboard/dist/
 dashboard/tests/
-**/*_test.go
 release/

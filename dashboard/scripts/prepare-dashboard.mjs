@@ -24,7 +24,7 @@ export function metadata(appId, version, entries) {
     adapter: 'wujie', sdkMajor: 1, minimumSdkVersion: '1.1.0',
     requiredCapabilities: ['app.request', 'navigation.request'],
     optionalCapabilities: appId === 'project' ? ['artifact.read', 'navigation.openApp', 'workspace.local'] : ['navigation.openApp'],
-    appApiPolicyRef: appId === 'project' ? 'project-dashboard-v1' : 'world-browser-v1', keepAlive: true,
+    appApiPolicyRef: appId === 'project' ? 'project-set-review-v1' : 'world-browser-v1', keepAlive: true,
   } }))
   const navigation = Buffer.from(JSON.stringify({ schemaVersion: appId === 'project' ? 2 : 1, appId, appVersion: version, artifactDigest: 'sha256:' + hash(index), entry: {
     entryId: 'main', title: appId === 'project' ? '项目管理' : '数字世界', iconRef: appId === 'project' ? 'folder' : 'globe', route: appId === 'project' ? '' : '/', accessRuleRef: appId + '-read',

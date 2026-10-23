@@ -20,6 +20,14 @@ COPY internal/ internal/
 COPY migrations/ migrations/
 RUN test -n "$APP_VERSION" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X github.com/verdantflarehub/verdantflare-app-project/internal/buildinfo.Version=$APP_VERSION" -o /project ./cmd/project
 
+FROM backend AS integration-build
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go test -c -tags integration -o /project-integration.test ./internal/project
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go test -c -tags integration -o /project-migrations.test ./migrations
+
+FROM scratch AS integration-artifact
+COPY --from=integration-build /project-integration.test /
+COPY --from=integration-build /project-migrations.test /
+
 FROM gcr.io/distroless/static-debian12:nonroot
 ARG APP_VERSION
 LABEL org.opencontainers.image.version=$APP_VERSION

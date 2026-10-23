@@ -48,6 +48,15 @@ func (s *Service) HTTPHandler(serviceToken string, _ ...string) (http.Handler, e
 			httpError(w, p, ErrForbidden)
 			return
 		}
+		origins := r.Header.Values("X-Review-Origin")
+		if len(origins) > 1 || len(origins) == 1 && origins[0] != "agent" && origins[0] != "human_interactive" {
+			httpError(w, p, ErrForbidden)
+			return
+		}
+		p.ReviewOrigin = "agent"
+		if len(origins) == 1 {
+			p.ReviewOrigin = origins[0]
+		}
 		mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 		if r.Method != "POST" || r.URL.RawQuery != "" || err != nil || mt != "application/json" || r.Header.Get("Content-Encoding") != "" {
 			httpError(w, p, ErrInvalid)
@@ -67,6 +76,21 @@ func (s *Service) HTTPHandler(serviceToken string, _ ...string) (http.Handler, e
 		}
 		var result any
 		switch r.URL.Path {
+		case "/internal/v1/project/review/open":
+			var req ReviewOpenRequest
+			if err = decodeReview(data, &req); err == nil {
+				result, err = s.ReviewOpen(r.Context(), p, req)
+			}
+		case "/internal/v1/project/review/append":
+			var req ReviewAppendRequest
+			if err = decodeReview(data, &req); err == nil {
+				result, err = s.ReviewAppend(r.Context(), p, req)
+			}
+		case "/internal/v1/project/review/status":
+			var req StatusRequest
+			if err = decodeReview(data, &req); err == nil {
+				result, err = s.ReviewStatus(r.Context(), p, req)
+			}
 		case "/internal/v1/project/publication_prepare":
 			var req PublicationPrepareRequest
 			if !decode(&req) {
@@ -227,7 +251,7 @@ func httpError(w http.ResponseWriter, p Principal, err error) {
 	for _, v := range []struct {
 		error
 		status int
-	}{{ErrBusy, 409}, {ErrRateLimited, 429}, {ErrLifecycleConflict, 409}, {ErrInvalid, 400}, {ErrUnsupported, 415}, {ErrTooLarge, 422}, {ErrForbidden, 403}, {ErrNotFound, 404}, {ErrConflict, 409}, {ErrIdempotency, 409}, {ErrNotReady, 409}, {ErrDependency, 503}} {
+	}{{ErrReviewConflict, 409}, {ErrTargetMismatch, 409}, {ErrReviewScope, 422}, {ErrLegacyTarget, 422}, {ErrBusy, 409}, {ErrRateLimited, 429}, {ErrLifecycleConflict, 409}, {ErrInvalid, 400}, {ErrUnsupported, 415}, {ErrTooLarge, 422}, {ErrForbidden, 403}, {ErrNotFound, 404}, {ErrConflict, 409}, {ErrIdempotency, 409}, {ErrNotReady, 409}, {ErrDependency, 503}} {
 		if errors.Is(err, v.error) {
 			status, code = v.status, v.Error()
 			break

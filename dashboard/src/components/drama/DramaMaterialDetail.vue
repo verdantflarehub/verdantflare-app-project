@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useRouter, type RouteLocationRaw } from 'vue-router'
+import { useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
+import { useHost } from '../../platform/host'
+import { reviewPath } from '../../platform/set-review'
+import { rememberReviewContext, reviewContextKey } from '../../platform/set-review-memory'
 import { ProjectReader, projectContentView, type DramaGlobal, type DramaUsage } from '../../platform/project-reader'
 import { materialPreview, dramaText } from '../../platform/drama-presentation'
 import { projectSources } from '../../platform/project-source'
@@ -22,7 +25,14 @@ const props = defineProps<{
   target: string
 }>()
 
-const router = useRouter()
+const router = useRouter(), route = useRoute()
+const { appSDK, dashboardHost } = useHost()
+function openSetReview() {
+  if (!material.value || material.value.kind !== 'location') return
+  const version = props.q('version') ? material.value.versions.find(v => v.key === props.q('version')) : [...material.value.versions].reverse().find(v => !state.value || v.state_key === state.value.key)
+  rememberReviewContext(reviewContextKey(appSDK.context.get(), project.value.project_id), route.fullPath, dashboardHost.getScroll(), undefined, undefined, project.value.manifest.name, material.value.name)
+  void router.push(reviewPath({ kind: 'project', project_id: project.value.project_id, content_revision_id: project.value.revision_id, material_key: material.value.key, state_key: version?.state_key || '', version_key: version?.key || '' }))
+}
 const project = computed(() => props.reader.project!)
 const drama = computed(() => projectContentView(project.value, props.reader.content)!.ai_short_drama!)
 const material = computed(() => drama.value.globals.find(g => g.key === props.q('material')))
@@ -74,6 +84,7 @@ function fileGallery(groupId: string, fileIds: string[], index: number, prefix: 
   <template v-if="q('lighting')">
     <section v-if="material?.kind === 'location' && state" class="panel">
       <h2>{{ material.name }} · {{ state.name }} · 环境与灯光</h2>
+      <button class="btn" @click="openSetReview">片场审阅 →</button>
       <p class="muted">固定场景状态；未登记灯光方案不视为已完成。</p>
       <DramaDocument v-for="r in state.definition_refs" :key="r.file_id + ':' + r.anchor" :reader="reader" :file-id="r.file_id" :anchor="r.anchor" title="场景状态依据" />
       <template v-for="v in lightingVersions" :key="v.key">
@@ -91,6 +102,7 @@ function fileGallery(groupId: string, fileIds: string[], index: number, prefix: 
     <p v-if="!material" class="empty">当前修订没有这项资料。</p>
     <p v-else-if="q('state') && !state" class="empty">当前修订没有这个状态。</p>
     <template v-else>
+      <div v-if="material.kind === 'location'" class="set-review-entry"><button class="btn" @click="openSetReview">片场审阅 →</button><span class="muted">固定证据、机位与范围结论</span></div>
       <p v-if="tab === 'materials'" class="material-note material-description">{{ human(material.description) }}</p>
       <div :class="tab === 'materials' ? 'material-detail' : 'reader-layout'">
         <div class="stack">

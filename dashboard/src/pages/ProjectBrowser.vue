@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, triggerRef, watch } from 'vue'
-import { onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router'
+import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router'
 import { callTool, MCPRequestError } from '../platform/mcp'
 import { isProjectID, ProjectReader, readerError, projectContentView, type AssetReference, type Detail, type ProjectItem } from '../platform/project-reader'
 import { worldTarget } from '../platform/route-links'
@@ -212,6 +212,10 @@ try {
     if (Array.isArray(entry) && typeof entry[0] === 'string' && entry[0].length <= 4096 && typeof entry[1] === 'number' && Number.isFinite(entry[1]) && entry[1] >= 0) positions.set(entry[0], entry[1])
   }
 } catch { /* Navigation works without browser storage. */ }
+onBeforeRouteLeave((_to, from) => {
+  positions.set(from.fullPath, dashboardHost.getScroll())
+  try { sessionStorage.setItem(scrollStorageKey, JSON.stringify([...positions])) } catch { /* Retain current navigation context. */ }
+})
 onBeforeRouteUpdate((to, from) => {
   if (!from.query.project && isCategory(String(from.query.category))) { listViews.set(String(from.query.category), { q: typeof from.query.q === 'string' ? from.query.q : undefined, sort: typeof from.query.sort === 'string' ? from.query.sort : undefined, shown: typeof from.query.shown === 'string' ? from.query.shown : undefined }); try { sessionStorage.setItem(viewsKey, JSON.stringify(Object.fromEntries(listViews))); sessionStorage.setItem(viewsKey + ':last', String(from.query.category)) } catch { /* Keep in memory. */ } }
   if (signedOut) return

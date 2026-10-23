@@ -87,6 +87,15 @@ func (s *Service) reserve(ctx context.Context, p Principal, c *commitRecord) err
 			}
 			plan["world"] = append(plan["world"], value.Grants...)
 		}
+		if c.Plan.Review != nil {
+			for _, dependency := range c.Plan.Review.Record.TargetManifest.Dependencies {
+				value, err := s.assets.Resolve(ctx, p, AssetRef{AssetID: dependency.AssetID, VersionID: dependency.VersionID, Purpose: dependency.Purpose})
+				if err != nil {
+					return err
+				}
+				plan["world"] = append(plan["world"], value.Grants...)
+			}
+		}
 		normalized, err := coordination.Normalize(plan)
 		if err != nil {
 			return err

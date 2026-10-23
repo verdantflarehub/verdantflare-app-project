@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useRouter, type RouteLocationRaw } from 'vue-router'
+import { useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
+import { useHost } from '../../platform/host'
+import { reviewPath } from '../../platform/set-review'
+import { rememberReviewContext, reviewContextKey } from '../../platform/set-review-memory'
 import { ProjectReader, projectContentView, type DramaGlobal, type DramaScene, type DramaShot } from '../../platform/project-reader'
 import { dramaText, materialPreview, shotPreview, shotSummary, type ShotPreview } from '../../platform/drama-presentation'
 import ProjectMedia, { type MediaGallery } from '../ProjectMedia.vue'
@@ -13,7 +16,12 @@ const props = defineProps<{
   shotLink: (sceneKey: string, shotKey: string, tab?: string) => RouteLocationRaw
 }>()
 
-const router = useRouter()
+const router = useRouter(), route = useRoute(), { appSDK, dashboardHost } = useHost()
+function openSetReview(g: DramaGlobal) {
+  const version = materialPreview(g).version
+  rememberReviewContext(reviewContextKey(appSDK.context.get(), project.value.project_id), route.fullPath, dashboardHost.getScroll(), undefined, undefined, project.value.manifest.name, g.name)
+  void router.push(reviewPath({ kind:'project', project_id:project.value.project_id, content_revision_id:project.value.revision_id, material_key:g.key, state_key:version?.state_key || '', version_key:version?.key || '' }))
+}
 const project = computed(() => props.reader.project!)
 const drama = computed(() => projectContentView(project.value, props.reader.content)!.ai_short_drama!)
 const episode = computed(() => props.q('episode') ? drama.value.episodes.find(e => e.key === props.q('episode')) : drama.value.episodes[0])
@@ -169,6 +177,7 @@ function onGridKeydown(e: KeyboardEvent) {
           </div>
           <p class="shot-summary">{{ g.states.length ? `${g.states.length} 种场景状态 · ${g.states.map(s => s.name).join('、')}` : human(g.description) || '查看场景空间、白模工程与灯光状态设定。' }}</p>
         </RouterLink>
+        <button class="btn" @click="openSetReview(g)">片场审阅 →</button>
       </article>
     </div>
     <p v-if="!locations.length" class="empty">暂无匹配的场景空间。</p>
