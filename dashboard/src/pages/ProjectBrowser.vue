@@ -82,10 +82,13 @@ const project = computed(() => reader.value?.project), content = computed(() => 
 const historical = computed(() => !!project.value?.head_revision_id && project.value.revision_id !== project.value.head_revision_id)
 const image = computed(() => content.value?.image)
 const character = computed(() => content.value?.character), music = computed(() => content.value?.music), video = computed(() => content.value?.video), drama = computed(() => content.value?.ai_short_drama), creative = computed(() => content.value?.creative_video)
-const tabs = computed(() => projectMenus(project.value?.manifest.category || ''))
+const tabs = computed(() => {
+  const menus = projectMenus(project.value?.manifest.category || '')
+  return drama.value ? [{ key: 'overview', label: '概览' }, ...menus] : menus
+})
 const activeTab = computed(() => {
   const dramaTab = dramaLocation.value?.tab
-  if (dramaTab && dramaTab !== 'list' && dramaTab !== 'overview') return tabs.value.find(t => t.key === dramaTab) || tabs.value[0]
+  if (dramaTab && dramaTab !== 'list') return tabs.value.find(t => t.key === dramaTab) || tabs.value[0]
   return tabs.value.find(t => t.key === businessKey(project.value?.manifest.category || '', query('tab'), query('kind'))) || tabs.value[0]
 })
 const objectDetail = computed(() => ['item', 'material', 'shot', 'scene', 'continuity', 'deliverable', 'file', 'fixed', 'run', 'reference', 'candidate', 'lighting', 'package'].some(key => !!dramaParam(key)))
@@ -363,7 +366,7 @@ onBeforeUnmount(() => { closeEdit(); alive = false; request++; listRequest++; na
         <section v-if="project.manifest.asset_refs?.length" class="panel"><h2>数字世界引用</h2><div class="reference-row"><button v-for="ref in project.manifest.asset_refs" :key="`${ref.asset_id}:${ref.asset_version_id}:${ref.purpose}`" class="btn" @click="openWorld(ref)">{{ ref.purpose }} · 查看固定版本</button></div></section>
         <section v-if="historical" class="revision-notice" role="status"><div><strong>正在查看历史版本</strong><p>图片、制作版本及选用状态均为当时记录，后续同步的素材不会出现在此版本中。</p></div><RouterLink class="btn" :to="link({ revision: undefined, state: undefined, version: undefined, compare: undefined })">查看最新版本</RouterLink></section>
         <RouterLink v-if="musicReturnRoute(route.query.fromMusic)" class="btn" :to="musicReturnRoute(route.query.fromMusic)!">返回来源作品</RouterLink>
-        <nav v-if="!objectDetail || image" class="business-tabs" aria-label="项目业务"><RouterLink v-for="tab in tabs" :key="tab.key" :class="{ active: (!dramaLocation || dramaLocation.tab !== 'overview') && activeTab?.key === tab.key }" :aria-current="(!dramaLocation || dramaLocation.tab !== 'overview') && activeTab?.key === tab.key ? 'page' : undefined" :to="menuLink(tab.key)">{{ tab.label }}</RouterLink></nav>
+        <nav v-if="!objectDetail || image" class="business-tabs" aria-label="项目业务"><RouterLink v-for="tab in tabs" :key="tab.key" :class="{ active: activeTab?.key === tab.key }" :aria-current="activeTab?.key === tab.key ? 'page' : undefined" :to="menuLink(tab.key)">{{ tab.label }}</RouterLink></nav>
         <ProjectShared v-if="shared" :reader="reader" :tab="activeTab!.key" />
         <CreativeVideoEditor v-else-if="!reader.content && project.manifest.category === 'creative_video'" :reader="reader" @saved="creativeSaved" />
         <div v-else-if="!content" class="state">暂无业务内容。</div>
@@ -406,15 +409,15 @@ onBeforeUnmount(() => { closeEdit(); alive = false; request++; listRequest++; na
 <style scoped>
 .image-overview{max-width:1100px;white-space:pre-wrap;overflow-wrap:anywhere}.image-management{position:relative;flex-shrink:0}.image-management>summary{cursor:pointer;font-size:13px;color:var(--muted);padding:8px 12px;border:1px solid var(--line);border-radius:8px}.image-management-menu{position:absolute;right:0;top:100%;z-index:20;min-width:180px;padding:8px;display:grid;gap:2px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--vf-shadow-card-hover)}.image-management-menu>a,.image-management-menu>button{display:block;text-align:left;padding:8px 12px;font-size:13px;border-radius:6px;cursor:pointer}.image-management-menu>a:hover,.image-management-menu>button:hover{background:var(--subtle)}.image-management-menu hr{width:100%;border:0;border-top:1px solid var(--line);margin:6px 0}
 .drama-browser { line-height:1.55; }
-.drama-browser .business-tabs { gap: 20px; border-bottom: 0.5px solid var(--vf-hairline-outer, var(--line)); margin: 0 0 16px; }
-.drama-browser .business-tabs a { padding: 8px 0; border: 0; border-bottom: 2px solid transparent; border-radius: 0; font-size: 13px; background: transparent; }
-.drama-browser .business-tabs a.active { background:transparent; color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+.drama-browser .business-tabs { gap: 7px; border-bottom: 0.5px solid var(--vf-hairline-outer, var(--line)); padding-bottom: 8px; margin: 0 0 16px; }
+.drama-browser .business-tabs a { padding: 7px 12px; border: 0; border-radius: 8px; }
+.drama-browser .business-tabs a.active { background: var(--paper); color: var(--button-ink); }
 .drama-browser :deep(a:focus-visible), .drama-browser :deep(button:focus-visible), .drama-browser :deep(input:focus-visible), .drama-browser :deep(select:focus-visible), .drama-browser :deep(textarea:focus-visible), .drama-browser :deep(summary:focus-visible) { outline:2px solid var(--accent); outline-offset:3px; }
 .drama-browser :deep(.btn:hover) { border-color:var(--accent); }
 .revision-notice { display:flex; align-items:center; justify-content:space-between; gap:16px; border-left:2px solid var(--accent); background:var(--shell-panel); box-shadow:var(--vf-shadow-card); padding:12px 16px; margin-bottom:22px; font-size:13px; border-radius:8px; }
 .revision-notice p { color:var(--muted); font-size:12px; margin-top:5px; line-height:1.8; }
 .revision-notice .btn { flex-shrink:0; }
-@media(max-width:800px) { .drama-browser .business-tabs { gap:16px; }.revision-notice { flex-wrap:wrap; } }
+@media(max-width:800px) { .revision-notice { flex-wrap:wrap; } }
 
 .project-browser { overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .tabular-nums { font-variant-numeric: tabular-nums; }
