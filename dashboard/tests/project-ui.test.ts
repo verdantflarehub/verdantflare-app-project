@@ -118,6 +118,8 @@ test('all drama business pages render and scene, lighting and package deep links
   assert.match(references, /本素材参考资料/); assert.match(references, /thumb-grid/); assert.match(references, /drama-file tile/)
   location.states = [{ key: 'night', name: '夜晚', definition_refs: [], marks: [] }]
   const state = location.states[0]
+  const locationStateDetail = await render.render('components/drama/ShortDramaProject.vue', { reader, tab: 'materials' }, `/projects?material=${location.key}&state=${state.key}`)
+  assert.doesNotMatch(locationStateDetail, /查看环境与灯光/)
   const lighting = `/projects?tab=location&material=${location.key}&lighting=${state.key}`
   const valid = await render.render('components/drama/ShortDramaProject.vue', { reader, tab: 'location' }, lighting)
   assert(valid.includes(state.name)); assert.match(valid, /环境与灯光/)

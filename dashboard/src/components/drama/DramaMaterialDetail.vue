@@ -91,9 +91,6 @@ function fileGallery(groupId: string, fileIds: string[], index: number, prefix: 
     <p v-if="!material" class="empty">当前修订没有这项资料。</p>
     <p v-else-if="q('state') && !state" class="empty">当前修订没有这个状态。</p>
     <template v-else>
-      <header v-if="material.kind === 'location' && state" class="section-head">
-        <RouterLink class="btn" :to="link({ lighting: state.key })">查看环境与灯光</RouterLink>
-      </header>
       <p v-if="tab === 'materials'" class="material-note material-description">{{ human(material.description) }}</p>
       <div :class="tab === 'materials' ? 'material-detail' : 'reader-layout'">
         <div class="stack">
