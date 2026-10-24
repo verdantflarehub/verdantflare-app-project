@@ -41,6 +41,13 @@ test('drama breadcrumbs match top-level business tabs, include historical versio
   assert.equal(crumbs[3].to.query.status, 'ready')
   assert.equal(crumbs[4].to.state, undefined)
 
+  const setupView = parseDramaPath(`/ai_short_drama/${a}/materials/location/anxi/morning/setups/s03_whip?revision=${b}`)!
+  assert.equal(setupView.setup, 's03_whip')
+  assert.equal(canonicalRoute('project', `/ai_short_drama/${a}/materials/location/anxi/morning/setups/s03_whip?revision=${b}`), `/ai_short_drama/${a}/materials/location/anxi/morning/setups/s03_whip?revision=${b}`)
+  const setupCrumbs = dramaBreadcrumb(setupView, { work: '张飞鞭督邮', material: '安喜县临河街区', state: '清晨自然光', setup: 'S03 马桩鞭打' })
+  assert.deepEqual(setupCrumbs.map(c => c.label), ['项目管理', '短剧制作', '张飞鞭督邮', '场景', '安喜县临河街区', '清晨自然光', 'S03 马桩鞭打'])
+  assert.equal(setupCrumbs[5].to.setup, undefined)
+
   const pkgView = parseDramaPath(`/ai_short_drama/${a}/delivery/trailer/package?revision=${b}`)!
   assert.deepEqual(dramaBreadcrumb(pkgView, { work: '密室样片', deliverable: '样片预告' }).map(c => c.label), ['项目管理', '短剧制作', '密室样片', '成果与交付', '样片预告', '交付包'])
 

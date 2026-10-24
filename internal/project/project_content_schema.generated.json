@@ -459,6 +459,134 @@
           }
         }
       },
+      "cameraKey": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,32}$"
+      },
+      "setPackageId": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9._-]{1,62}$"
+      },
+      "setupCast": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "character_key"
+        ],
+        "properties": {
+          "character_key": {
+            "$ref": "#/$defs/key"
+          },
+          "wardrobe_key": {
+            "$ref": "#/$defs/optionalKey"
+          },
+          "wardrobe_state_key": {
+            "$ref": "#/$defs/optionalKey"
+          },
+          "stand_in": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^ACTOR_[A-Za-z0-9_]{1,60}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mark_note": {
+            "$ref": "#/$defs/text"
+          }
+        },
+        "dependentRequired": {
+          "wardrobe_state_key": [
+            "wardrobe_key"
+          ]
+        }
+      },
+      "locationSetup": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "label",
+          "state_key",
+          "cast",
+          "camera_keys"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/$defs/key"
+          },
+          "label": {
+            "$ref": "#/$defs/name"
+          },
+          "state_key": {
+            "$ref": "#/$defs/key"
+          },
+          "scene_refs": {
+            "type": "array",
+            "maxItems": 1000,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "episode_key",
+                "scene_key"
+              ],
+              "properties": {
+                "episode_key": {
+                  "$ref": "#/$defs/key"
+                },
+                "scene_key": {
+                  "$ref": "#/$defs/key"
+                }
+              }
+            }
+          },
+          "cast": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/$defs/setupCast"
+            }
+          },
+          "camera_keys": {
+            "type": "array",
+            "uniqueItems": true,
+            "maxItems": 64,
+            "items": {
+              "$ref": "#/$defs/cameraKey"
+            }
+          },
+          "primary_camera_key": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/cameraKey"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "set_package_id": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/setPackageId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "poster_file_id": {
+            "$ref": "#/$defs/reference"
+          },
+          "review": {
+            "$ref": "#/$defs/review"
+          }
+        }
+      },
       "materialVersion": {
         "type": "object",
         "additionalProperties": false,
@@ -795,9 +923,36 @@
             "items": {
               "$ref": "#/$defs/materialSelection"
             }
+          },
+          "setups": {
+            "type": "array",
+            "maxItems": 1000,
+            "items": {
+              "$ref": "#/$defs/locationSetup"
+            }
           }
         },
         "allOf": [
+          {
+            "if": {
+              "required": [
+                "setups"
+              ],
+              "properties": {
+                "setups": {
+                  "type": "array",
+                  "minItems": 1
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "kind": {
+                  "const": "location"
+                }
+              }
+            }
+          },
           {
             "if": {
               "required": [
@@ -977,7 +1132,25 @@
                 "type": "null"
               }
             ]
+          },
+          "setup_key": {
+            "$ref": "#/$defs/optionalKey"
+          },
+          "camera_key": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/cameraKey"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
+        },
+        "dependentRequired": {
+          "camera_key": [
+            "setup_key"
+          ]
         }
       },
       "deliverable": {

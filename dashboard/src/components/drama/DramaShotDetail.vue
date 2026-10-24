@@ -1,7 +1,14 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { RouteLocationRaw } from 'vue-router'
-import { ProjectReader, projectContentView, type DramaGlobal, type DramaUsage } from '../../platform/project-reader'
+import { useHost } from '../../platform/host'
+import {
+  buildProjectViewerOpenTarget,
+  classifyViewerOpenError,
+  detectProjectSetPackages,
+  type ViewerLaunchOutcome,
+} from '../../platform/set-viewer-entry'
+import { ProjectReader, projectContentView, type DramaGlobal, type DramaLocationSetup, type DramaUsage } from '../../platform/project-reader'
 import DramaProse from './DramaProse.vue'
 import DramaDocument from './DramaDocument.vue'
 import DramaFile from './DramaFile.vue'
@@ -16,16 +23,54 @@ const props = defineProps<{
   target: string
 }>()
 
+const { appSDK } = useHost()
 const project = computed(() => props.reader.project!)
 const drama = computed(() => projectContentView(project.value, props.reader.content)!.ai_short_drama!)
 const episode = computed(() => props.q('episode') ? drama.value.episodes.find(e => e.key === props.q('episode')) : drama.value.episodes[0])
 const scene = computed(() => episode.value?.scenes.find(s => s.key === props.q('scene')))
 const shot = computed(() => scene.value?.shots.find(s => s.key === props.q('shot')))
 const usages = computed(() => drama.value.usages.filter(u => shot.value ? u.target.episode_key === episode.value?.key && (!u.target.scene_key || u.target.scene_key === scene.value?.key) && (!u.target.shot_key || u.target.shot_key === shot.value.key) : false))
+const availableSetPackages = computed(() => detectProjectSetPackages(project.value?.manifest.files))
+const viewerOutcome = ref<ViewerLaunchOutcome | 'idle'>('idle')
+const viewerBusy = ref(false)
+
+function setupOf(u: DramaUsage): DramaLocationSetup | undefined {
+  if (!u.setup_key) return undefined
+  const g = drama.value.globals.find(gl => gl.key === u.global_key)
+  return g?.setups?.find(s => s.key === u.setup_key)
+}
+
+async function openShotSetupInViewer(u: DramaUsage) {
+  if (viewerBusy.value) return
+  const setup = setupOf(u)
+  const setId = setup?.set_package_id || availableSetPackages.value[0]?.setId
+  const cameraId = u.camera_key || setup?.primary_camera_key || setup?.camera_keys[0] || 'C1'
+  viewerBusy.value = true
+  viewerOutcome.value = 'idle'
+  try {
+    const target = buildProjectViewerOpenTarget({
+      projectId: project.value.project_id,
+      revisionId: project.value.revision_id,
+      setId,
+      cameraId,
+    })
+    await appSDK.capabilities.call('navigation.openApp', target)
+    viewerOutcome.value = 'opened'
+  } catch (cause) {
+    viewerOutcome.value = classifyViewerOpenError(cause)
+  } finally {
+    viewerBusy.value = false
+  }
+}
 
 function usageMaterial(u: DramaUsage) {
   const g = drama.value.globals.find(gl => gl.key === u.global_key)!
-  return [g.name, g.states.find(s => s.key === u.state_key)?.name || '状态未整理', g.versions.find(v => v.key === u.version_key)?.label || '制作版本未选定'].join(' · ')
+  const setup = setupOf(u)
+  return [
+    g.name,
+    g.states.find(s => s.key === u.state_key)?.name || '状态未整理',
+    setup ? setup.label : (g.versions.find(v => v.key === u.version_key)?.label || '制作版本未选定'),
+  ].join(' · ')
 }
 </script>
 
@@ -84,8 +129,32 @@ function usageMaterial(u: DramaUsage) {
           <h2>固定素材与场景状态</h2>
           <p v-if="!usages.length" class="muted">素材、白模与灯光输入尚未关联。</p>
           <div v-for="u in usages" :key="u.key" class="row">
-            <RouterLink :to="materialLink(drama.globals.find(g => g.key === u.global_key)!, u.version_key || undefined, u.state_key || undefined)">{{ usageMaterial(u) }} →</RouterLink>
-            <p class="muted">{{ u.segment?.label || '场次／整镜使用' }}</p>
+            <RouterLink
+              v-if="u.setup_key"
+              :to="link({ tab: 'location', kind: 'location', material: u.global_key, state: u.state_key || setupOf(u)?.state_key, setup: u.setup_key, episode: undefined, scene: undefined, shot: undefined })"
+            >
+              {{ usageMaterial(u) }} →
+            </RouterLink>
+            <RouterLink
+              v-else
+              :to="materialLink(drama.globals.find(g => g.key === u.global_key)!, u.version_key || undefined, u.state_key || undefined)"
+            >
+              {{ usageMaterial(u) }} →
+            </RouterLink>
+            <p class="muted">
+              {{ u.segment?.label || '场次／整镜使用' }}
+              <template v-if="u.setup_key"> · 机位 <code>{{ u.camera_key || setupOf(u)?.primary_camera_key || 'C1' }}</code></template>
+            </p>
+            <button
+              v-if="u.setup_key || u.camera_key"
+              type="button"
+              class="shot-viewer-link"
+              :disabled="viewerBusy"
+              data-testid="shot-open-viewer"
+              @click="openShotSetupInViewer(u)"
+            >
+              在查看器中核对本镜机位 →
+            </button>
           </div>
         </section>
         <section v-if="shot.continuity_keys.length" class="panel">
@@ -117,6 +186,8 @@ h3 { font-size: 15px; margin: 8px 0; }
 .stack { display: grid; gap: 18px; }
 .production-cols > aside { position: sticky; top: 16px; align-self: start; }
 .related-link { display: block; color: var(--accent); font-size: 13px; line-height: 1.7; padding: 6px 0; }
+.shot-viewer-link { margin-top: 6px; padding: 0; border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; text-align: left; }
+.shot-viewer-link:hover { text-decoration: underline; }
 .row { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 14px; }
 .row > a { font-size: 13px; line-height: 1.75; color: var(--accent); }
 @media (max-width: 1200px) {

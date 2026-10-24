@@ -13,6 +13,7 @@ export interface DramaView {
   kind?: string
   material?: string
   state?: string
+  setup?: string
   episode?: string
   scene?: string
   shot?: string
@@ -84,7 +85,11 @@ function parseScript(projectId: string, parts: string[], query: DramaQuery): Dra
 }
 
 function parseMaterial(projectId: string, parts: string[], query: DramaQuery): DramaView {
-  if (!parts.length || !kinds.has(parts[0]) || parts.slice(1).some(part => part !== 'lighting' && !isDramaKey(part))) return { projectId, tab: 'character', kind: 'character', query }
+  if (!parts.length || !kinds.has(parts[0])) return { projectId, tab: 'character', kind: 'character', query }
+  if (parts.length === 5 && parts[0] === 'location' && parts[3] === 'setups' && isDramaKey(parts[1]) && isDramaKey(parts[2]) && isDramaKey(parts[4])) {
+    return { projectId, tab: 'location', kind: 'location', material: parts[1], state: parts[2], setup: parts[4], query }
+  }
+  if (parts.slice(1).some(part => part !== 'lighting' && !isDramaKey(part)) || parts.length > 4) return { projectId, tab: 'character', kind: 'character', query }
   if (parts.length === 3 && parts[0] === 'location' && parts[2] === 'review') return { projectId, tab: 'location', kind: 'location', material: parts[1], state: query.state, review: true, query }
   const [kind, material, state, tail] = parts
   const lighting = kind === 'location' && tail === 'lighting' ? state : undefined
@@ -131,9 +136,10 @@ export function dramaBrowserTarget(currentPath: string, change: Record<string, s
     else if (view.tab === 'script') view.kind = 'script'
     else view.kind = undefined
   }
-  for (const key of ['kind', 'material', 'state', 'episode', 'scene', 'shot', 'deliverable', 'continuity', 'lighting', 'package', 'view'] as const) {
+  for (const key of ['kind', 'material', 'state', 'setup', 'episode', 'scene', 'shot', 'deliverable', 'continuity', 'lighting', 'package', 'view'] as const) {
     if (key in change) view[key] = change[key] || undefined
   }
+  if (('material' in change || 'state' in change) && !('setup' in change)) view.setup = undefined
   if (view.projectId && materialTabs.has(view.tab)) view.kind = view.tab
   if ('q' in change) view.query.q = change.q || undefined
   else if (change.find) view.query.q = change.find
@@ -141,7 +147,7 @@ export function dramaBrowserTarget(currentPath: string, change: Record<string, s
     if (key in change) view.query[key] = change[key] || undefined
   }
   if (!view.projectId) {
-    view.kind = view.material = view.state = view.episode = view.scene = view.shot = view.deliverable = view.continuity = view.lighting = view.package = view.view = undefined
+    view.kind = view.material = view.state = view.setup = view.episode = view.scene = view.shot = view.deliverable = view.continuity = view.lighting = view.package = view.view = undefined
     view.query.revision = undefined
     view.query.version = undefined
   }
@@ -186,11 +192,12 @@ export function dramaPath(view: DramaView): string {
   if (view.material) path += '/' + view.material
   if (view.review && kind === 'location' && view.material) return path + '/review'
   if (view.state) path += '/' + view.state
+  if (kind === 'location' && view.material && view.state && view.setup) return path + '/setups/' + view.setup
   if (view.lighting) path += '/lighting'
   return path
 }
 
-const legacyParamKeys = ['project', 'tab', 'kind', 'material', 'state', 'episode', 'scene', 'shot', 'deliverable', 'continuity', 'lighting', 'package', 'view', 'compare', 'returnMaterial', 'find'] as const
+const legacyParamKeys = ['project', 'tab', 'kind', 'material', 'state', 'setup', 'episode', 'scene', 'shot', 'deliverable', 'continuity', 'lighting', 'package', 'view', 'compare', 'returnMaterial', 'find'] as const
 const savedListQueries = new Map<string, { q?: string; status?: string; focusKey?: string }>()
 
 function listMemoryKey(projectId: string | undefined, tab: string, kind?: string, revision?: string): string {
@@ -255,7 +262,7 @@ function legacyTab(tab: string, kind: string) {
   return 'overview'
 }
 
-export function dramaBreadcrumb(view: DramaView, names: { work?: string; material?: string; episode?: string; scene?: string; shot?: string; deliverable?: string; state?: string; version?: string; detail?: string }) {
+export function dramaBreadcrumb(view: DramaView, names: { work?: string; material?: string; episode?: string; scene?: string; shot?: string; deliverable?: string; state?: string; setup?: string; version?: string; detail?: string }) {
   const listRecall = recalledDramaListContext({ tab: 'list', query: { revision: view.query.revision } })
   const items: { label: string; to: DramaView }[] = [
     { label: '项目管理', to: { tab: 'list', query: {} } },
@@ -311,9 +318,10 @@ export function dramaBreadcrumb(view: DramaView, names: { work?: string; materia
   const matRecall = recalledDramaListContext({ projectId: view.projectId, tab: kind, kind, query: { revision: view.query.revision } })
   const matQuery = { revision: view.query.revision, q: view.query.q || matRecall?.q, status: view.query.status || matRecall?.status }
   items.push({ label: tabLabel[kind] || '场景', to: { projectId: view.projectId, tab: kind, kind, query: matQuery } })
-  if (view.material && names.material) items.push({ label: names.material, to: { ...view, state: undefined, lighting: undefined, query: { revision: view.query.revision } } })
-  if (view.material && names.state) items.push({ label: names.state, to: { ...view, lighting: undefined, query: { revision: view.query.revision } } })
-  if (view.material && names.version && !view.lighting) items.push({ label: names.version, to: { ...view, lighting: undefined, query: { revision: view.query.revision, version: view.query.version } } })
+  if (view.material && names.material) items.push({ label: names.material, to: { ...view, state: undefined, setup: undefined, lighting: undefined, query: { revision: view.query.revision } } })
+  if (view.material && names.state) items.push({ label: names.state, to: { ...view, setup: undefined, lighting: undefined, query: { revision: view.query.revision } } })
+  if (view.material && view.setup && (names.setup || view.setup)) items.push({ label: names.setup || view.setup, to: { ...view, lighting: undefined, query: { revision: view.query.revision } } })
+  if (view.material && names.version && !view.lighting && !view.setup) items.push({ label: names.version, to: { ...view, lighting: undefined, query: { revision: view.query.revision, version: view.query.version } } })
   if (view.lighting) items.push({ label: '环境与灯光', to: view })
   return items
 }

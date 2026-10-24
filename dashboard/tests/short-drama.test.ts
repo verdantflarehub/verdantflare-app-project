@@ -342,3 +342,54 @@ test('shotPreview resolves 4-tier visual hierarchy and shotSummary cleans author
   assert.equal(shotSummary('全黑画面，工业噪音切入。'), '全黑画面，工业噪音切入。')
   assert.match(shotSummary(''), /查看本镜分镜依据/)
 })
+
+test('location setups and usage setup/camera bindings round-trip and reject invalid layer references', () => {
+  const { value, p } = versioned()
+  const loc = value.ai_short_drama.globals.find((g: any) => g.kind === 'location')
+  value.ai_short_drama.globals.push(
+    { key: 'char_hero', kind: 'character', name: '县尉', review: { state: 'unreviewed', record_file_id: null } },
+    { key: 'ward_hero', kind: 'wardrobe', name: '县尉常服', states: [{ key: 'clean', name: '整洁', definition_refs: [], marks: [] }], review: { state: 'unreviewed', record_file_id: null } },
+  )
+  loc.setups = [{
+    key: 'setup_morning_arrival',
+    label: '清晨督邮至县衙',
+    state_key: loc.states[0].key,
+    scene_refs: [{ episode_key: 'ep01', scene_key: 'sc01' }],
+    cast: [{
+      character_key: 'char_hero',
+      wardrobe_key: 'ward_hero',
+      wardrobe_state_key: 'clean',
+      stand_in: 'ACTOR_hero_01',
+      mark_note: '案前北侧',
+    }],
+    camera_keys: ['overview', 'gate_front'],
+    primary_camera_key: 'gate_front',
+    set_package_id: 'pkg-b',
+    poster_file_id: id(12),
+    review: { state: 'approved', record_file_id: id(10) },
+  }]
+  value.ai_short_drama.usages.push({
+    key: 'u_setup_shot',
+    global_key: loc.key,
+    state_key: loc.states[0].key,
+    setup_key: 'setup_morning_arrival',
+    camera_key: 'gate_front',
+    target: { episode_key: 'ep01', scene_key: 'sc01', shot_key: 'sh01' },
+    description: '正门迎候机位',
+  })
+  const parsed = parse(value, p)
+  assert.equal(parsed.ai_short_drama.globals.find((g: any) => g.key === loc.key)!.setups.length, 1)
+  assert.equal(parsed.ai_short_drama.usages.find((u: any) => u.key === 'u_setup_shot')!.camera_key, 'gate_front')
+  assert.deepEqual(parse(parsed, p), parsed)
+
+  // Non-location material cannot define setups
+  const nonLoc = structuredClone(value)
+  nonLoc.ai_short_drama.globals.find((g: any) => g.kind === 'character').setups = structuredClone(loc.setups)
+  assert.throws(() => parse(nonLoc, p))
+
+  // Camera key not in setup.camera_keys must fail
+  const badCam = structuredClone(value)
+  badCam.ai_short_drama.usages.find((u: any) => u.key === 'u_setup_shot').camera_key = 'unknown_cam'
+  assert.throws(() => parse(badCam, p))
+})
+

@@ -33,15 +33,34 @@ export interface DramaVersion {
   spatial_record_file_id?: string | null; lighting_record_file_id?: string | null; change_record_file_id?: string | null; composition_file_id?: string | null
 }
 export interface DramaSelection { purpose: string; version_key: string; state_key?: string; segment_key?: string | null }
+export interface DramaSetupCast {
+  character_key: string
+  wardrobe_key: string | null
+  wardrobe_state_key: string | null
+  stand_in: string | null
+  mark_note: string | null
+}
+export interface DramaLocationSetup {
+  key: string
+  label: string
+  state_key: string
+  scene_refs: { episode_key: string; scene_key: string }[]
+  cast: DramaSetupCast[]
+  camera_keys: string[]
+  primary_camera_key: string | null
+  set_package_id: string | null
+  poster_file_id: string | null
+  review: DramaReview
+}
 export interface DramaGlobal {
   music_source?: { project_id: string; revision_id: string; song_key: string } | null
   key: string; kind: 'script' | 'character' | 'wardrobe' | 'prop' | 'location' | 'sound' | 'music'; name: string
-  states: DramaState[]; versions: DramaVersion[]; selected_versions: DramaSelection[]
+  states: DramaState[]; versions: DramaVersion[]; selected_versions: DramaSelection[]; setups: DramaLocationSetup[]
   description: string | null; file_ids: string[]; reference_file_ids: string[]; review: DramaReview
   asset_id: string | null; asset_version_id: string | null
   definition_refs: DefinitionRef[]; definition_review: DramaReview; input_global_keys: string[]; generation_record_file_ids: string[]
 }
-export interface DramaUsage { state_key: string | null; version_key: string | null; segment: DramaSegment | null; key: string; global_key: string; target: { episode_key: string; scene_key?: string; shot_key?: string }; description: string | null }
+export interface DramaUsage { state_key: string | null; version_key: string | null; segment: DramaSegment | null; setup_key: string | null; camera_key: string | null; key: string; global_key: string; target: { episode_key: string; scene_key?: string; shot_key?: string }; description: string | null }
 export interface DramaDeliverable { versions: DramaVersion[]; selected_version_key: string | null; delivery_record_file_ids: string[]; key: string; title: string; episode_key: string | null; description: string | null; file_ids: string[]; review: DramaReview }
 export interface WorldRegistration {
   commit_id: string; source_project_id: string; source_revision_id: string; file_ids: string[]
@@ -302,10 +321,63 @@ export function parseProjectContent(raw: string, project: ProjectOpen): ProjectC
       }
       const states = statesOf(g.states), versions = versionsOf(g.versions, 'global'), selected_versions = selectionsOf(g.selected_versions, versions, 'global')
       if (versions.some(v => !states.some(s => s.key === v.state_key))) invalid()
-      return { states, versions, selected_versions, music_source, key: key(g.key), kind: g.kind as DramaGlobal['kind'], name: required(g.name), description: text(g.description), file_ids: selected, reference_file_ids: references(g.reference_file_ids), review, definition_refs, definition_review, input_global_keys: keys(g.input_global_keys), generation_record_file_ids: references(g.generation_record_file_ids), ...asset }
+      const setups: DramaLocationSetup[] = unique(collection(g.setups, item => {
+        const st = recordObject(item, ['key', 'label', 'state_key', 'scene_refs', 'cast', 'camera_keys', 'primary_camera_key', 'set_package_id', 'poster_file_id', 'review'])
+        if (!Array.isArray(st.cast) || !Array.isArray(st.camera_keys)) invalid()
+        const state_key = key(st.state_key)
+        if (!states.some(s => s.key === state_key)) invalid()
+        const camera_keys = unique(collection(st.camera_keys, c => {
+          const ck = required(c)
+          if (!/^[A-Za-z0-9_-]{1,32}$/.test(ck)) invalid()
+          return { key: ck }
+        }, 64)).map(c => c.key)
+        const primary_camera_key = st.primary_camera_key == null ? null : required(st.primary_camera_key)
+        if (primary_camera_key && !camera_keys.includes(primary_camera_key)) invalid()
+        const set_package_id = st.set_package_id == null ? null : required(st.set_package_id)
+        if (set_package_id && !/^[a-z0-9][a-z0-9._-]{1,62}$/.test(set_package_id)) invalid()
+        const scene_refs = collection(st.scene_refs, sr => {
+          const r = recordObject(sr, ['episode_key', 'scene_key'])
+          return { episode_key: key(r.episode_key), scene_key: key(r.scene_key) }
+        })
+        const cast: DramaSetupCast[] = collection(st.cast, c => {
+          const r = recordObject(c, ['character_key', 'wardrobe_key', 'wardrobe_state_key', 'stand_in', 'mark_note'])
+          const wardrobe_key = optionalKey(r.wardrobe_key), wardrobe_state_key = optionalKey(r.wardrobe_state_key)
+          if (wardrobe_state_key && !wardrobe_key) invalid()
+          const stand_in = text(r.stand_in)
+          if (stand_in && !/^ACTOR_[A-Za-z0-9_]{1,60}$/.test(stand_in)) invalid()
+          return { character_key: key(r.character_key), wardrobe_key, wardrobe_state_key, stand_in, mark_note: text(r.mark_note) }
+        }, 100)
+        return {
+          key: key(st.key),
+          label: required(st.label),
+          state_key,
+          scene_refs,
+          cast,
+          camera_keys,
+          primary_camera_key,
+          set_package_id,
+          poster_file_id: reference(st.poster_file_id),
+          review: reviewOf(st.review),
+        }
+      }))
+      if (setups.length && g.kind !== 'location') invalid()
+      return { states, versions, selected_versions, setups, music_source, key: key(g.key), kind: g.kind as DramaGlobal['kind'], name: required(g.name), description: text(g.description), file_ids: selected, reference_file_ids: references(g.reference_file_ids), review, definition_refs, definition_review, input_global_keys: keys(g.input_global_keys), generation_record_file_ids: references(g.generation_record_file_ids), ...asset }
     }))
     const globalByKey = new Map(globals.map(g => [g.key, g]))
     if (globals.some(g => g.input_global_keys.some(k => k === g.key || !globalByKey.has(k)))) invalid()
+    for (const g of globals) {
+      for (const setup of g.setups) {
+        for (const c of setup.cast) {
+          const cg = globalByKey.get(c.character_key)
+          if (!cg || cg.kind !== 'character') return invalid()
+          if (c.wardrobe_key) {
+            const wg = globalByKey.get(c.wardrobe_key)
+            if (!wg || wg.kind !== 'wardrobe') return invalid()
+            if (c.wardrobe_state_key && !wg.states.some(s => s.key === c.wardrobe_state_key)) return invalid()
+          }
+        }
+      }
+    }
     const bodyContinuity = (value: unknown): DramaContinuity[] => unique(array(value, item => {
       const c = object(item), asset = assetOf(c), global_keys = keys(c.global_keys)
       if (!['character', 'wardrobe', 'location', 'prop', 'voice', 'general'].includes(String(c.kind)) || global_keys.some(k => !globalByKey.has(k))) invalid()
@@ -354,6 +426,14 @@ export function parseProjectContent(raw: string, project: ProjectOpen): ProjectC
       return { key: key(ep.key), title: required(ep.title), overview: text(ep.overview), script_key, script_file_id, output_file_id: reference(ep.output_file_id), edit_file_id: reference(ep.edit_file_id), scenes }
     }))
     const episodeByKey = new Map(episodes.map(e => [e.key, e]))
+    for (const g of globals) {
+      for (const setup of g.setups) {
+        for (const sr of setup.scene_refs) {
+          const ep = episodeByKey.get(sr.episode_key)
+          if (!ep || !ep.scenes.some(s => s.key === sr.scene_key)) invalid()
+        }
+      }
+    }
     const usages: DramaUsage[] = unique(collection(body.usages, item => {
       const u = object(item), t = object(u.target), global_key = key(u.global_key)
       if (!globalByKey.has(global_key)) invalid()
@@ -372,11 +452,20 @@ export function parseProjectContent(raw: string, project: ProjectOpen): ProjectC
       const state_key = optionalKey(u.state_key), version_key = optionalKey(u.version_key), segment = u.segment == null ? null : segmentOf(u.segment), global = globalByKey.get(global_key)!
       if (state_key && !global.states.some(s => s.key === state_key)) invalid()
       if (version_key && (!state_key || !global.versions.some(v => v.key === version_key && v.state_key === state_key))) invalid()
+      const setup_key = optionalKey(u.setup_key)
+      const camera_key = u.camera_key == null ? null : required(u.camera_key)
+      if (camera_key && (!setup_key || !/^[A-Za-z0-9_-]{1,32}$/.test(camera_key))) invalid()
+      if (setup_key) {
+        if (global.kind !== 'location') invalid()
+        const setup = global.setups.find(s => s.key === setup_key)
+        if (!setup || (state_key && setup.state_key !== state_key)) invalid()
+        if (camera_key && !setup!.camera_keys.includes(camera_key)) invalid()
+      }
       if (segment) {
         const actual = episode!.scenes.find(s => s.key === target.scene_key)?.shots.find(s => s.key === target.shot_key)?.segments.find(s => s.key === segment.key)
         if (!actual || actual.order !== segment.order || actual.label !== segment.label) invalid()
       }
-      return { state_key, version_key, segment, key: key(u.key), global_key, target, description: text(u.description) }
+      return { state_key, version_key, segment, setup_key, camera_key, key: key(u.key), global_key, target, description: text(u.description) }
     }, 10000))
     const deliverables: DramaDeliverable[] = unique(collection(body.deliverables, item => {
       const d = object(item), episode_key = d.episode_key == null ? null : key(d.episode_key), file_ids = references(d.file_ids), review = reviewOf(d.review)

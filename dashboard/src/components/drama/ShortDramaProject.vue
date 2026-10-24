@@ -48,11 +48,13 @@ const kinds = [
 ]
 
 const material = computed(() => drama.value.globals.find(g => g.key === q('material')))
+const activeSetup = computed(() => material.value?.setups?.find(s => s.key === q('setup')))
 const state = computed(() => {
   const owner = material.value
   if (!owner) return undefined
   if (q('lighting')) return owner.states.find(s => s.key === q('lighting'))
   if (q('state')) return owner.states.find(s => s.key === q('state'))
+  if (activeSetup.value) return owner.states.find(s => s.key === activeSetup.value?.state_key)
   const latest = [...owner.versions].reverse().find(v => !q('state') || v.state_key === q('state'))
   const version = q('version') ? owner.versions.find(v => v.key === q('version')) : latest
   return owner.states.find(s => s.key === (q('state') || version?.state_key)) || owner.states[0]
@@ -133,6 +135,7 @@ function currentView(): DramaView {
     kind,
     material: q('material') || undefined,
     state: q('state') || undefined,
+    setup: q('setup') || undefined,
     episode: q('episode') || undefined,
     scene: q('scene') || undefined,
     shot: q('shot') || undefined,
@@ -164,7 +167,8 @@ watch(
 function link(change: Record<string, string | undefined>) {
   const view = { ...currentView(), query: { ...currentView().query } }
   const reset = 'tab' in change || ['material', 'shot', 'deliverable'].some(key => key in change)
-  if (reset) { view.lighting = undefined; view.package = undefined }
+  if (reset) { view.lighting = undefined; view.package = undefined; if (!('setup' in change)) view.setup = undefined }
+  if ('state' in change && !('setup' in change)) view.setup = undefined
   for (const [key, value] of Object.entries(change)) {
     if (key === 'find') view.query.q = value
     else if (key === 'revision' || key === 'version' || key === 'status' || key === 'q') view.query[key] = value
@@ -194,14 +198,15 @@ const crumbs = computed(() => dramaBreadcrumb(currentView(), {
   shot: shot.value?.title || continuityEntry.value?.title,
   deliverable: delivery.value?.title,
   state: state.value?.name,
+  setup: activeSetup.value?.label || q('setup') || undefined,
   version: versionLabel.value,
 }))
 
 function materialLink(g: DramaGlobal, version?: string, stateKey?: string) {
-  return link({ tab: g.kind === 'script' ? 'script' : g.kind, material: g.key, state: stateKey, version, find: undefined, status: undefined, kind: g.kind, compare: undefined, episode: undefined, scene: undefined, shot: undefined, deliverable: undefined, returnMaterial: undefined })
+  return link({ tab: g.kind === 'script' ? 'script' : g.kind, material: g.key, state: stateKey, setup: undefined, version, find: undefined, status: undefined, kind: g.kind, compare: undefined, episode: undefined, scene: undefined, shot: undefined, deliverable: undefined, returnMaterial: undefined })
 }
 
-const target = computed(() => [props.tab, q('material'), q('state'), q('episode'), q('scene'), q('shot'), q('deliverable'), q('version'), q('continuity')].join('/'))
+const target = computed(() => [props.tab, q('material'), q('state'), q('setup'), q('episode'), q('scene'), q('shot'), q('deliverable'), q('version'), q('continuity')].join('/'))
 </script>
 
 <template>
@@ -372,11 +377,19 @@ const target = computed(() => [props.tab, q('material'), q('state'), q('episode'
               v-for="g in filtered"
               :key="g.key"
               :class="tab === 'materials' ? 'material-card' : 'setting-card'"
-              :to="link({ material: g.key, kind: g.kind, returnMaterial: undefined, state: tab === 'materials' ? materialPreview(g).version?.state_key : undefined, version: undefined, compare: undefined })"
+              :to="link({ material: g.key, kind: g.kind, returnMaterial: undefined, state: tab === 'materials' ? (materialPreview(g).version?.state_key || g.states[0]?.key) : undefined, setup: undefined, version: undefined, compare: undefined })"
             >
               <div v-if="tab === 'materials'" class="media-thumb">
                 <ProjectMedia v-if="materialPreview(g).fileId" :reader="reader" :file-id="materialPreview(g).fileId" kind="image" :label="g.name" thumbnail />
                 <span v-else class="material-empty-icon">{{ ({ character: '人', wardrobe: '衣', prop: '物', location: '景', sound: '♪', music: '♫' } as Record<string, string>)[g.kind] }}</span>
+                <div v-if="g.kind === 'location'" class="location-card-badges" data-testid="location-card-badges">
+                  <span class="loc-badge source" :class="{ world: Boolean(g.asset_id) }" data-testid="location-source-badge">
+                    {{ g.asset_id ? `世界 · ${g.asset_version_id?.slice(0, 8) || '固定空景'}` : '项目自建' }}
+                  </span>
+                  <span class="loc-badge setups" data-testid="location-setup-count-badge">
+                    戏份 {{ g.setups?.length || 0 }}
+                  </span>
+                </div>
               </div>
               <div class="material-copy">
                 <span class="muted">{{ tab === 'materials' ? cardStatus(g) : activeName }}</span>
@@ -406,6 +419,9 @@ const target = computed(() => [props.tab, q('material'), q('state'), q('episode'
 <style scoped>
 .material-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:18px 0}.material-toolbar label{display:grid;gap:6px;font-size:12px;color:var(--muted)}.material-toolbar select{max-width:100%}.material-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;align-items:stretch}.material-grid.kind-location{grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}.material-card{display:flex;flex-direction:column;background:var(--shell-panel);border:1px solid var(--line);border-radius:8px;overflow:hidden;min-width:0;height:100%}.material-card:hover{border-color:var(--accent)}.material-card .media-thumb{width:100%;aspect-ratio:3/4;height:auto;display:flex;align-items:center;justify-content:center;background:var(--subtle);padding:0;position:relative;overflow:hidden}.material-grid.kind-location .material-card .media-thumb{aspect-ratio:16/10}.material-copy{padding:14px 16px;display:flex;flex-direction:column;flex:1;min-width:0}.material-copy .muted{font-size:12px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.material-copy h3{font-size:16px;margin:6px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.material-copy .preview-status{font-size:12px;color:var(--muted);line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.material-copy p{font-size:13px;color:var(--muted);margin:6px 0 10px;line-height:1.6;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 .material-empty-icon{font-size:36px;color:var(--muted);display:grid;place-items:center;width:100%;height:100%;background:var(--subtle)}.material-card .read-more{display:block;margin-top:12px}
+.location-card-badges{position:absolute;left:10px;right:10px;bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:8px;pointer-events:none;z-index:2}
+.loc-badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:500;line-height:1.3;background:var(--shell-panel);color:var(--ink);border:1px solid var(--line)}
+.loc-badge.world{color:var(--accent);border-color:var(--accent)}
 @media(max-width:800px){.material-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}.material-toolbar{align-items:stretch}.material-toolbar label{width:100%}.material-toolbar select{width:100%}}
 
 .short-drama { min-width:0; overflow-wrap:anywhere; }

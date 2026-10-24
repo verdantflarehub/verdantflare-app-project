@@ -78,6 +78,23 @@ func TestDramaContentSchemaAndSemanticValidation(t *testing.T) {
 			delete(u, "state_key")
 			u["version_key"] = "v1"
 		},
+		"setup with unknown state": func(d contentObject) {
+			g := objectOf(listOf(d["globals"])[0])
+			g["setups"] = []any{contentObject{
+				"key": "setup_01", "label": "Setup", "state_key": "missing",
+				"cast": []any{}, "camera_keys": []any{"overview"},
+			}}
+		},
+		"usage with unknown setup camera": func(d contentObject) {
+			g := objectOf(listOf(d["globals"])[0])
+			g["setups"] = []any{contentObject{
+				"key": "setup_01", "label": "Setup", "state_key": "night",
+				"cast": []any{}, "camera_keys": []any{"overview"},
+			}}
+			u := objectOf(listOf(d["usages"])[0])
+			u["setup_key"] = "setup_01"
+			u["camera_key"] = "gate_front"
+		},
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
