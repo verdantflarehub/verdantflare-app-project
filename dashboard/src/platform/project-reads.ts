@@ -5,7 +5,7 @@ export class ProjectReads {
   private waiting: Array<{ resolve: () => void; reject: (error: Error) => void }> = []
   constructor(private retryable: (error: unknown) => boolean, private limit = 4) {}
   private active() { if (this.stopped) throw new Error('项目已切换。') }
-  async run<T>(read: () => Promise<T>): Promise<T> {
+  async run<T>(read: () => Promise<T>, retryLimit = 2): Promise<T> {
     this.active()
     if (this.running >= this.limit) await new Promise<void>((resolve, reject) => this.waiting.push({ resolve, reject }))
     else this.running++
@@ -14,7 +14,7 @@ export class ProjectReads {
         this.active()
         try { return await read() }
         catch (error) {
-          if (attempt >= 2 || !this.retryable(error)) throw error
+          if (attempt >= retryLimit || !this.retryable(error)) throw error
           await new Promise(resolve => setTimeout(resolve, 250 * (attempt + 1)))
         }
       }

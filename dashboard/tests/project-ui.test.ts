@@ -216,8 +216,9 @@ test('interaction physics tokens, 48-bar 0.7 Gamma waveform, lightbox affine zoo
   const mediaCalls: Array<[string, string]> = []
   const videoReader = { ...reader, media: async (fileId: string, kind: string) => { mediaCalls.push([fileId, kind]); return 'blob:video-preview' } }
   const videoThumb = await render.render('components/ProjectMedia.vue', { reader: videoReader, fileId: id(10), kind: 'video', label: '机位预演', thumbnail: true })
-  assert.deepEqual(mediaCalls, [[id(10), 'video']])
-  assert.match(videoThumb, /放大查看/); assert.match(videoThumb, /video-dialog/); assert.match(videoThumb, /放大机位预演/)
+  assert.deepEqual(mediaCalls, [])
+  assert.match(videoThumb, /播放视频/); assert.match(videoThumb, /video-dialog/); assert.match(videoThumb, /播放机位预演/)
+  assert.doesNotMatch(videoThumb, /<video\b|autoplay/)
   const parent = structuredClone(reader.project)
   const current = structuredClone(reader.project)
   current.revision_id = id(3); current.parent_revision_id = parent.revision_id

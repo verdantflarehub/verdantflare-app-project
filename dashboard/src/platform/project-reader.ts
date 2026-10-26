@@ -123,14 +123,18 @@ export class ProjectReader {
     const cacheKey = `${id}:${edge}`
     if (!this.thumbnails.has(cacheKey)) {
       const requestThumb = async () => {
+        this.active()
         try {
           return await callTool<{ mime: string; data: string }>('project.thumbnail', { project_id: this.projectID, revision_id: this.project!.revision_id, file_id: id, edge }, this.projectID)
         } catch (err) {
           if (err instanceof MCPRequestError && ![429, 500, 502, 503, 504].includes(err.status)) throw err
+          this.active()
           return await callTool<{ mime: string; data: string }>('project.thumbnail', { project_id: this.projectID, revision_id: this.project!.revision_id, file_id: id, edge }, this.projectID)
         }
       }
-      const promise = requestThumb().then(result => {
+      // Share the reader's four slots with document and download reads. The
+      // thumbnail operation already retries once, so do not multiply retries.
+      const promise = this.reads.run(requestThumb, 0).then(result => {
         this.active()
         if (result.mime !== 'image/webp' || typeof result.data !== 'string' || !result.data) throw new Error('缩略图不可用。')
         const bytes = Uint8Array.from(atob(result.data), char => char.charCodeAt(0))

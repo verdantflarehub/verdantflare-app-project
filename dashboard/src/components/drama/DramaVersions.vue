@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ProjectReader, type DramaVersion, type DramaSelection } from '../../platform/project-reader'
 import DramaProse from './DramaProse.vue'
@@ -11,13 +11,13 @@ const purposeName: Record<string, string> = { whitebox: '白模工程', lighting
 const selectedKeys = computed(() => new Set([props.selectedKey, ...(props.selections || []).map(s => s.version_key)].filter(Boolean)))
 const version = computed(() => route.query.version ? props.versions.find(v => v.key === route.query.version) : props.versions.at(-1))
 const displayed = computed(() => version.value ? [version.value] : [])
+const fileBatchSize = 12, visibleCount = ref(fileBatchSize)
+watch([() => props.reader, version], () => { visibleCount.value = fileBatchSize })
+const visibleFiles = computed(() => version.value?.file_refs.slice(0, visibleCount.value) || [])
+const galleryItems = computed(() => version.value?.file_refs.map(f => ({ fileId: f.file_id, label: `${version.value!.label} · ${purposeName[f.purpose] || '成果文件'}` })) || [])
+function showMoreFiles() { visibleCount.value = Math.min(visibleCount.value + fileBatchSize, version.value?.file_refs.length || 0) }
 const reviewName = (state: string) => ({ unreviewed: '未审核', in_review: '审核中', approved: '此版已有审核记录', rejected: '需修改' }[state] || '未审核')
 function select(field: string, value: string) { void router.push({ path: route.path, query: { ...route.query, publish: undefined, publication: undefined, [field]: value || undefined, ...(field === 'version' ? { compare: undefined } : {}) } }) }
-function versionGallery(v: DramaVersion, fileId: string) {
-  const items = v.file_refs.map(f => ({ fileId: f.file_id, label: `${v.label} · ${purposeName[f.purpose] || '成果文件'}` }))
-  const index = items.findIndex(item => item.fileId === fileId)
-  return index >= 0 ? { id: `version-${v.key}`, items, index } : undefined
-}
 </script>
 <template>
   <section class="panel" :class="{ 'material-mode': materialMode }">
@@ -27,7 +27,12 @@ function versionGallery(v: DramaVersion, fileId: string) {
       <p v-if="!version" class="muted">当前修订或状态没有指定的版本，请重新选择。</p>
       <div v-if="!fixed && versions.length > 1" class="toolbar"><label>当前查看版本<select :value="version?.key" @change="select('version', ($event.target as HTMLSelectElement).value)"><option v-for="v in versions" :key="v.key" :value="v.key">{{ v.label }}{{ selectedKeys.has(v.key) ? ' · 项目选用' : '' }}{{ v.purpose ? ' · ' + (purposeName[v.purpose] || '制作成果') : '' }}</option></select></label></div>
       <p class="muted">切换查看不会更改项目选用。返修、换选和保存由 AI 经 MCP 执行。</p>
-      <div class="version-grid"><article v-for="v in displayed" :key="v.key"><h3 v-if="!materialMode">{{ v.label }} <span class="muted">{{ selectedKeys.has(v.key) ? '项目选用' : '未选用候选' }}</span></h3><figure class="material-preview"><div class="thumb-grid"><DramaFile thumbnail :hide-label="materialMode" v-for="f in v.file_refs" :key="f.file_id" :reader="reader" :file-id="f.file_id" :label="`${v.label} · ${purposeName[f.purpose] || '成果文件'}`" :gallery="versionGallery(v, f.file_id)" /></div><figcaption v-if="materialMode">{{ v.label }} · {{ reviewName(v.review.state) }} · {{ selectedKeys.has(v.key) ? '项目选用' : '未选用候选' }}<DramaProse :text="v.change_note" :drama="reader.content?.ai_short_drama" /></figcaption></figure><DramaProse v-if="!materialMode" :text="v.change_note" :drama="reader.content?.ai_short_drama" /><RouterLink class="basis-link" :to="{ path: route.path, query: { ...route.query, revision: v.basis_revision_id, version: undefined, compare: undefined } }">查看本版制作依据 →</RouterLink><p class="muted">{{ reviewName(v.review.state) }}{{ v.parent_version_key ? ' · 基于 ' + (versions.find(p => p.key === v.parent_version_key)?.label || '此前版本') : '' }}</p><p v-if="(v.purpose === 'whitebox' || v.file_refs.some(f => f.purpose === 'whitebox')) && !v.file_refs.some(f => f.purpose === 'preview' || f.purpose === 'image')" class="muted">本版预览待生成；旧版预览不会代替本版。</p><DramaDocument v-if="v.change_record_file_id" :reader="reader" :file-id="v.change_record_file_id" title="完整修改记录" /><DramaDocument v-if="v.lighting_record_file_id" :reader="reader" :file-id="v.lighting_record_file_id" title="场景状态与灯光方案" /><DramaDocument v-if="v.spatial_record_file_id" :reader="reader" :file-id="v.spatial_record_file_id" title="白模空间与相机说明" /><DramaDocument v-if="v.composition_file_id" :reader="reader" :file-id="v.composition_file_id" title="固定剪辑来源" /><DramaDocument v-if="v.review.record_file_id" :reader="reader" :file-id="v.review.record_file_id" title="此版审核记录" /><DramaDocument v-for="(id, index) in v.generation_record_file_ids" :key="id" :reader="reader" :file-id="id" :title="`制作记录 ${index + 1}`" /></article></div>
+      <div class="version-grid"><article v-for="v in displayed" :key="v.key"><h3 v-if="!materialMode">{{ v.label }} <span class="muted">{{ selectedKeys.has(v.key) ? '项目选用' : '未选用候选' }}</span></h3><figure class="material-preview"><div class="thumb-grid"><DramaFile thumbnail :hide-label="materialMode" v-for="(f, index) in visibleFiles" :key="f.file_id" :reader="reader" :file-id="f.file_id" :label="`${v.label} · ${purposeName[f.purpose] || '成果文件'}`" :gallery="{ id: `version-${v.key}`, items: galleryItems, index }" /></div>
+        <div v-if="v.file_refs.length > fileBatchSize" class="file-pagination">
+          <span class="muted" role="status">已显示 {{ visibleFiles.length }} / {{ v.file_refs.length }} 个文件</span>
+          <button v-if="visibleFiles.length < v.file_refs.length" class="btn" @click="showMoreFiles">加载更多文件</button>
+        </div>
+        <figcaption v-if="materialMode">{{ v.label }} · {{ reviewName(v.review.state) }} · {{ selectedKeys.has(v.key) ? '项目选用' : '未选用候选' }}<DramaProse :text="v.change_note" :drama="reader.content?.ai_short_drama" /></figcaption></figure><DramaProse v-if="!materialMode" :text="v.change_note" :drama="reader.content?.ai_short_drama" /><RouterLink class="basis-link" :to="{ path: route.path, query: { ...route.query, revision: v.basis_revision_id, version: undefined, compare: undefined } }">查看本版制作依据 →</RouterLink><p class="muted">{{ reviewName(v.review.state) }}{{ v.parent_version_key ? ' · 基于 ' + (versions.find(p => p.key === v.parent_version_key)?.label || '此前版本') : '' }}</p><p v-if="(v.purpose === 'whitebox' || v.file_refs.some(f => f.purpose === 'whitebox')) && !v.file_refs.some(f => f.purpose === 'preview' || f.purpose === 'image')" class="muted">本版预览待生成；旧版预览不会代替本版。</p><DramaDocument v-if="v.change_record_file_id" :reader="reader" :file-id="v.change_record_file_id" title="完整修改记录" /><DramaDocument v-if="v.lighting_record_file_id" :reader="reader" :file-id="v.lighting_record_file_id" title="场景状态与灯光方案" /><DramaDocument v-if="v.spatial_record_file_id" :reader="reader" :file-id="v.spatial_record_file_id" title="白模空间与相机说明" /><DramaDocument v-if="v.composition_file_id" :reader="reader" :file-id="v.composition_file_id" title="固定剪辑来源" /><DramaDocument v-if="v.review.record_file_id" :reader="reader" :file-id="v.review.record_file_id" title="此版审核记录" /><DramaDocument v-for="(id, index) in v.generation_record_file_ids" :key="id" :reader="reader" :file-id="id" :title="`制作记录 ${index + 1}`" /></article></div>
       <details v-if="!fixed" class="version-history"><summary>完整版本与修改历史 · {{ versions.length }} 版</summary><div v-for="v in versions" :key="v.key" class="history-row"><RouterLink :to="{ path: route.path, query: { ...route.query, version: v.key, compare: undefined } }"><strong>{{ v.label }}</strong> · {{ selectedKeys.has(v.key) ? '项目选用' : '未选用' }} · {{ reviewName(v.review.state) }} →</RouterLink><DramaProse :text="v.change_note" :drama="reader.content?.ai_short_drama" /></div></details>
     </template>
   </section>
@@ -36,6 +41,7 @@ function versionGallery(v: DramaVersion, fileId: string) {
 .thumb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; align-items: start; }
 @media (max-width: 720px) { .thumb-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .thumb-grid :deep(.drama-file) { min-width: 0; min-height: 0; }
+.file-pagination { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 12px; padding: 16px; }
 .version-grid :deep(.image-open img) { max-height: 570px; object-fit: contain; }
 .version-grid.comparing :deep(.image-open img) { height: 260px; object-fit: contain; }
 .version-history { border-top: 1px solid var(--line); margin-top: 22px; padding-top: 16px; font-size: 13px; }
