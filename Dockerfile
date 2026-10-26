@@ -28,7 +28,9 @@ FROM scratch AS integration-artifact
 COPY --from=integration-build /project-integration.test /
 COPY --from=integration-build /project-migrations.test /
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg && rm -rf /var/lib/apt/lists/*
+USER 65532:65532
 ARG APP_VERSION
 LABEL org.opencontainers.image.version=$APP_VERSION
 WORKDIR /app

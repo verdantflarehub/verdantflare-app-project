@@ -3,8 +3,9 @@ package project
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
+	"github.com/verdantflarehub/verdantflare-app-project/internal/contentcache"
 	"image"
 	"image/draw"
 	"image/gif"
@@ -12,7 +13,7 @@ import (
 	"image/png"
 	"mime"
 	"os"
-	"path/filepath"
+	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,6 +28,7 @@ type ThumbnailRequest struct {
 	RevisionID string `json:"revision_id"`
 	FileID     string `json:"file_id"`
 	Edge       int    `json:"edge"`
+	Preview    string `json:"preview,omitempty"`
 }
 type ThumbnailResult struct {
 	MIME string `json:"mime"`
@@ -34,23 +36,15 @@ type ThumbnailResult struct {
 }
 
 const (
-	thumbnailMaxBytes      int64 = 32 << 20
-	thumbnailMaxCacheBytes int   = 512 << 10
+	thumbnailMaxBytes int64 = 32 << 20
 )
 
-type thumbCall struct {
-	done chan struct{}
-	res  ThumbnailResult
-	err  error
-}
-
 var (
-	thumbnailDir  = os.TempDir()
-	thumbMu       sync.Mutex
-	thumbSem      = make(chan struct{}, 2)
-	thumbWait     int
-	thumbHits     = map[string][]time.Time{}
-	thumbInflight = map[string]*thumbCall{}
+	thumbnailDir = contentcache.DefaultDir("project")
+	thumbMu      sync.Mutex
+	thumbSem     = make(chan struct{}, 2)
+	thumbWait    int
+	thumbHits    = map[string][]time.Time{}
 )
 
 func ThumbnailCacheDir(dir string) {
@@ -76,11 +70,8 @@ func supportedImageMIME(raw string) bool {
 }
 
 func (s *Service) Thumbnail(ctx context.Context, p Principal, r ThumbnailRequest) (ThumbnailResult, error) {
-	if !p.Valid() || !ValidID(r.ProjectID) || !ValidID(r.RevisionID) || !ValidID(r.FileID) || (r.Edge != 320 && r.Edge != 640) {
+	if !p.Valid() || !ValidID(r.ProjectID) || !ValidID(r.RevisionID) || !ValidID(r.FileID) || (r.Edge != 320 && r.Edge != 640) || (r.Preview != "" && r.Preview != "poster") {
 		return ThumbnailResult{}, ErrInvalid
-	}
-	if !allowThumbnail(p.OrganizationID + "/" + p.SubjectID) {
-		return ThumbnailResult{}, ErrRateLimited
 	}
 	opened, err := s.Open(ctx, p, r.ProjectID, r.RevisionID)
 	if err != nil {
@@ -96,71 +87,77 @@ func (s *Service) Thumbnail(ctx context.Context, p Principal, r ThumbnailRequest
 	if file == nil {
 		return ThumbnailResult{}, ErrNotFound
 	}
-	meta, err := s.content.Metadata(ctx, p, file.Content, Access{ProjectID: r.ProjectID, RevisionID: r.RevisionID})
+	meta, err := s.cachedMetadata(ctx, p, file.Content, Access{ProjectID: r.ProjectID, RevisionID: r.RevisionID})
 	if err != nil {
 		return ThumbnailResult{}, err
 	}
-	if !supportedImageMIME(meta.MIME) {
+	poster := r.Preview == "poster"
+	mt, _, _ := mime.ParseMediaType(meta.MIME)
+	if (!poster && !supportedImageMIME(meta.MIME)) || (poster && mt != "video/mp4" && mt != "video/webm" && mt != "video/ogg" && mt != "video/quicktime") {
 		return ThumbnailResult{}, ErrUnsupported
 	}
-	if meta.Size > thumbnailMaxBytes {
+	max := thumbnailMaxBytes
+	if poster {
+		max = 128 << 20
+	}
+	if meta.Size > max {
 		return ThumbnailResult{}, ErrTooLarge
 	}
-	key := filepath.Join(thumbnailDir, p.OrganizationID, meta.SHA256, strconv.Itoa(r.Edge)+".webp")
-	if cached, err := os.ReadFile(key); err == nil && len(cached) > 0 {
-		now := time.Now()
-		_ = os.Chtimes(key, now, now)
-		return ThumbnailResult{MIME: "image/webp", Data: base64.StdEncoding.EncodeToString(cached)}, nil
-	}
-
-	thumbMu.Lock()
-	if call, ok := thumbInflight[key]; ok {
-		thumbMu.Unlock()
-		select {
-		case <-call.done:
-			return call.res, call.err
-		case <-ctx.Done():
-			return ThumbnailResult{}, ctx.Err()
+	identity, _ := json.Marshal([]any{p.OrganizationID, meta.SHA256, r.Edge, r.Preview, "webp-v1"})
+	encoded, err := s.derivedCache().Get(ctx, "derived:"+string(identity), 4<<20, func() ([]byte, error) {
+		if !allowThumbnail(p.OrganizationID + "/" + p.SubjectID) {
+			return nil, ErrRateLimited
 		}
-	}
-	call := &thumbCall{done: make(chan struct{})}
-	thumbInflight[key] = call
-	thumbMu.Unlock()
-
-	defer func() {
-		thumbMu.Lock()
-		delete(thumbInflight, key)
-		close(call.done)
-		thumbMu.Unlock()
-	}()
-
-	if err := acquireThumbnailSlot(ctx); err != nil {
-		call.err = err
-		return ThumbnailResult{}, err
-	}
-	defer releaseThumbnailSlot()
-
-	raw, err := s.content.Read(ctx, p, file.Content, Access{ProjectID: r.ProjectID, RevisionID: r.RevisionID}, thumbnailMaxBytes)
-	if err != nil {
-		call.err = err
-		return ThumbnailResult{}, err
-	}
-	if sha256.Sum256(raw) != mustSHA(meta.SHA256) {
-		call.err = ErrNotReady
-		return ThumbnailResult{}, ErrNotReady
-	}
-	encoded, err := encodeThumbnail(raw, r.Edge)
-	if err != nil {
-		call.err = err
-		return ThumbnailResult{}, err
-	}
-	if len(encoded) <= thumbnailMaxCacheBytes {
-		if err = os.MkdirAll(filepath.Dir(key), 0o700); err == nil {
-			_ = os.WriteFile(key, encoded, 0o600)
+		if err := acquireThumbnailSlot(ctx); err != nil {
+			return nil, err
 		}
+		defer releaseThumbnailSlot()
+		raw, err := s.cachedRead(ctx, p, file.Content, Access{ProjectID: r.ProjectID, RevisionID: r.RevisionID}, max)
+		if err != nil {
+			return nil, err
+		}
+		if !checkedHash(raw, meta.SHA256) {
+			return nil, ErrNotReady
+		}
+		if poster {
+			return encodePoster(ctx, raw, r.Edge)
+		}
+		return encodeThumbnail(raw, r.Edge)
+	})
+	if err != nil {
+		return ThumbnailResult{}, err
 	}
-	call.res = ThumbnailResult{MIME: "image/webp", Data: base64.StdEncoding.EncodeToString(encoded)}
-	return call.res, nil
+	return ThumbnailResult{MIME: "image/webp", Data: base64.StdEncoding.EncodeToString(encoded)}, nil
+}
+
+// Seekable input supports ordinary MP4s with a trailing moov box. The source
+// and resulting poster are cached; ffmpeg runs only for a cold representation.
+func encodePoster(ctx context.Context, raw []byte, edge int) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	input, err := os.CreateTemp("", "vf-poster-*")
+	if err != nil {
+		return nil, ErrDependency
+	}
+	name := input.Name()
+	defer os.Remove(name)
+	if _, err = input.Write(raw); err != nil {
+		input.Close()
+		return nil, ErrDependency
+	}
+	if input.Close() != nil {
+		return nil, ErrDependency
+	}
+	executable := os.Getenv("PROJECT_FFMPEG")
+	if executable == "" {
+		executable = "ffmpeg"
+	}
+	cmd := exec.CommandContext(ctx, executable, "-nostdin", "-v", "error", "-threads", "1", "-ss", "0", "-i", name, "-frames:v", "1", "-vf", "scale="+strconv.Itoa(edge)+":"+strconv.Itoa(edge)+":force_original_aspect_ratio=decrease", "-f", "image2pipe", "-vcodec", "png", "pipe:1")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, ErrUnsupported
+	}
+	return encodeThumbnail(output, edge)
 }
 
 func encodeThumbnail(raw []byte, edge int) ([]byte, error) {

@@ -14,6 +14,7 @@ import { ProjectReader, projectContentView, type DramaGlobal, type DramaLocation
 import { materialPreview, dramaText } from '../../platform/drama-presentation'
 import { previewImage } from '../../platform/media-preview'
 import { projectSources } from '../../platform/project-source'
+import VisibleThumbnail from '../VisibleThumbnail.vue'
 import ProjectMedia, { type MediaGallery } from '../ProjectMedia.vue'
 import DramaProse from './DramaProse.vue'
 import DramaDocument from './DramaDocument.vue'
@@ -38,23 +39,7 @@ const setViewerState = ref<ViewerLaunchOutcome | 'idle'>('idle')
 const setViewerBusy = ref(false)
 const setPackageDownloadUrl = ref('')
 const availableSetPackages = computed(() => detectProjectSetPackages(project.value?.manifest.files))
-const posterThumbs = ref<Record<string, string>>({})
 const lightboxOwner = {}
-
-async function ensureThumbLoaded(fileId?: string | null) {
-  if (!fileId || posterThumbs.value[fileId]) return
-  try {
-    const url = await props.reader.thumbnail(fileId, 640)
-    posterThumbs.value = { ...posterThumbs.value, [fileId]: url }
-  } catch {
-    try {
-      const url = await props.reader.media(fileId, 'image')
-      posterThumbs.value = { ...posterThumbs.value, [fileId]: url }
-    } catch {
-      // Handled by fallback
-    }
-  }
-}
 
 async function openPosterLightbox(fileId: string | null | undefined, label: string) {
   if (!fileId) return
@@ -237,15 +222,7 @@ function wardrobeStateName(wKey?: string | null, wsKey?: string | null): string 
   return st ? `${w.name} · ${st.name}` : w.name
 }
 
-watch(
-  [emptySetCoverFileId, stateSetups, activeSetup],
-  () => {
-    void ensureThumbLoaded(emptySetCoverFileId.value)
-    for (const s of stateSetups.value) void ensureThumbLoaded(s.poster_file_id)
-    if (activeSetup.value) void ensureThumbLoaded(activeSetup.value.poster_file_id)
-  },
-  { immediate: true }
-)
+
 
 const lightingVersions = computed(() => material.value?.versions.filter(v => v.state_key === state.value?.key && (!props.q('version') || v.key === props.q('version'))) || [])
 const human = (text?: string | null) => dramaText(text, drama.value).replace(/\*\*/g, '').replace(/^\s*\||\|\s*$/g, '').replace(/\s*\|\s*/g, ' · ').trim()
@@ -338,7 +315,7 @@ function fileGallery(groupId: string, fileIds: string[], index: number, prefix: 
                 data-testid="setup-hero-open-viewer"
                 @click="openProjectSetViewer(activeSetup.set_package_id || undefined, activeSetup.primary_camera_key || activeSetup.camera_keys[0] || 'C1')"
               >
-                <img v-if="activeSetup.poster_file_id && posterThumbs[activeSetup.poster_file_id]" :src="posterThumbs[activeSetup.poster_file_id]" :alt="activeSetup.label">
+                <VisibleThumbnail v-if="activeSetup.poster_file_id" :cache-key="`${reader.project?.revision_id}:${activeSetup.poster_file_id}`" :load="eligible => reader.thumbnail(activeSetup!.poster_file_id!, 640, eligible)" :label="activeSetup.label" />
                 <div v-else class="shot-placeholder">
                   <span>{{ activeSetup.label }} · 主机位 {{ activeSetup.primary_camera_key || activeSetup.camera_keys[0] || 'C1' }}</span>
                 </div>
@@ -370,7 +347,7 @@ function fileGallery(groupId: string, fileIds: string[], index: number, prefix: 
                   @click="openProjectSetViewer(activeSetup.set_package_id || undefined, camKey)"
                 >
                   <div class="cam-card-thumb">
-                    <img v-if="activeSetup.poster_file_id && posterThumbs[activeSetup.poster_file_id]" :src="posterThumbs[activeSetup.poster_file_id]" :alt="camKey">
+                    <VisibleThumbnail v-if="activeSetup.poster_file_id" :cache-key="`${reader.project?.revision_id}:${activeSetup.poster_file_id}`" :load="eligible => reader.thumbnail(activeSetup!.poster_file_id!, 640, eligible)" :label="camKey" />
                     <span class="cam-id-pill">{{ camKey }}</span>
                     <span v-if="camKey === (activeSetup.primary_camera_key || activeSetup.camera_keys[0])" class="cam-primary-pill">主机位</span>
                   </div>
@@ -551,7 +528,7 @@ function fileGallery(groupId: string, fileIds: string[], index: number, prefix: 
                 data-testid="empty-set-open-viewer"
                 @click="openProjectSetViewer(emptySetPackageId, 'C1')"
               >
-                <img v-if="emptySetCoverFileId && posterThumbs[emptySetCoverFileId]" :src="posterThumbs[emptySetCoverFileId]" :alt="`${material.name} 空景`">
+                <VisibleThumbnail v-if="emptySetCoverFileId" :cache-key="`${reader.project?.revision_id}:${emptySetCoverFileId}`" :load="eligible => reader.thumbnail(emptySetCoverFileId!, 640, eligible)" :label="`${material.name} 空景`" />
                 <div v-else class="shot-placeholder">
                   <span>{{ state?.name || '默认状态' }} · 空景基线</span>
                 </div>
@@ -594,7 +571,7 @@ function fileGallery(groupId: string, fileIds: string[], index: number, prefix: 
                 :data-testid="`setup-shot-open-${setup.key}`"
                 @click="openProjectSetViewer(setup.set_package_id || undefined, setup.primary_camera_key || setup.camera_keys[0] || 'C1')"
               >
-                <img v-if="setup.poster_file_id && posterThumbs[setup.poster_file_id]" :src="posterThumbs[setup.poster_file_id]" :alt="setup.label">
+                <VisibleThumbnail v-if="setup.poster_file_id" :cache-key="`${reader.project?.revision_id}:${setup.poster_file_id}`" :load="eligible => reader.thumbnail(setup.poster_file_id!, 640, eligible)" :label="setup.label" />
                 <div v-else class="shot-placeholder">
                   <span>{{ setup.label }}</span>
                 </div>

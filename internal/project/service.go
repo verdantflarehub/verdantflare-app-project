@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/verdantflarehub/verdantflare-app-project/internal/contentcache"
 	"mime"
 	"sort"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -16,11 +18,14 @@ import (
 )
 
 type Service struct {
-	db      *pgxpool.Pool
-	content Artifact
-	assets  AssetResolver
-	workers chan struct{}
-	coord   *coordination.Engine
+	cacheOnce sync.Once
+	cache     *contentcache.Cache
+	derived   *contentcache.Cache
+	db        *pgxpool.Pool
+	content   Artifact
+	assets    AssetResolver
+	workers   chan struct{}
+	coord     *coordination.Engine
 }
 
 func NewService(ctx context.Context, db *pgxpool.Pool, content Artifact, assets AssetResolver, coord *coordination.Engine) (*Service, error) {
@@ -652,7 +657,7 @@ func (s *Service) Open(ctx context.Context, p Principal, id, selected string) (O
 	if e != nil {
 		return OpenResult{}, e
 	}
-	data, e := s.content.Read(ctx, p, ref, Access{ProjectID: id, RevisionID: selected}, MaxManifestBytes)
+	data, e := s.cachedRead(ctx, p, ref, Access{ProjectID: id, RevisionID: selected}, MaxManifestBytes)
 	if e != nil {
 		return OpenResult{}, e
 	}

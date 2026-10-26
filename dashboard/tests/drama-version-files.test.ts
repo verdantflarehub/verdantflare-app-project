@@ -25,29 +25,29 @@ function fixture(counts: number[]) {
   return { reader, versions, requested }
 }
 
-test('a large material version mounts and reads only the first 12 previews', async () => {
+test('a large material version mounts a lightweight first batch without reading media before visibility', async () => {
   const f = fixture([4, 148])
   const selections = [{ purpose: 'preview', version_key: 'v1' }]
   const before = JSON.stringify({ versions: f.versions, selections })
   const html = await render.render('components/drama/DramaVersions.vue', { reader: f.reader, versions: f.versions, selections, materialMode: true })
-  assert.deepEqual(f.requested, f.versions[1].file_refs.slice(0, 12).map(f => f.file_id))
+  assert.deepEqual(f.requested, [])
   assert.equal((html.match(/class="drama-file tile"/g) || []).length, 12)
   assert.match(html, /已显示 12 \/ 148 个文件/)
-  assert.match(html, /加载更多文件/)
+  assert.match(html, /file-sentinel/); assert.doesNotMatch(html, /加载更多文件/)
   assert.equal(JSON.stringify({ versions: f.versions, selections }), before)
 })
 
 test('an explicitly selected older version starts with its own first batch', async () => {
   const f = fixture([25, 148])
   const html = await render.render('components/drama/DramaVersions.vue', { reader: f.reader, versions: f.versions }, '/projects?version=v1')
-  assert.deepEqual(f.requested, f.versions[0].file_refs.slice(0, 12).map(f => f.file_id))
+  assert.deepEqual(f.requested, [])
   assert.match(html, /已显示 12 \/ 25 个文件/)
 })
 
 test('small material versions retain all previews without a load-more control', async () => {
   const f = fixture([4])
   const html = await render.render('components/drama/DramaVersions.vue', { reader: f.reader, versions: f.versions })
-  assert.deepEqual(f.requested, f.versions[0].file_refs.map(f => f.file_id))
+  assert.deepEqual(f.requested, [])
   assert.equal((html.match(/class="drama-file tile"/g) || []).length, 4)
   assert.doesNotMatch(html, /加载更多文件|file-pagination/)
 })

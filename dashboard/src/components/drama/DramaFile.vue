@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ProjectReader, readerError } from '../../platform/project-reader'
+import { computed, ref, watch } from 'vue'
+import { ProjectReader } from '../../platform/project-reader'
 import ProjectMedia, { type MediaGallery } from '../ProjectMedia.vue'
 const props = defineProps<{ reader: ProjectReader; fileId: string; label: string; hideLabel?: boolean; thumbnail?: boolean; gallery?: MediaGallery }>()
 const kind = ref<'image' | 'audio' | 'video' | 'file' | null>(null), error = ref('')
@@ -16,28 +16,20 @@ function inferKindFromPath(fileId: string): 'image' | 'audio' | 'video' | null {
     if (['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext)) return 'image'
     if (['mp4', 'webm', 'mov'].includes(ext)) return 'video'
     if (['mp3', 'wav', 'flac', 'm4a', 'aac'].includes(ext)) return 'audio'
-  } catch { /* Fall back to metadata inspection. */ }
+  } catch { /* Keep an explicit file entry. */ }
   return null
 }
-let serial = 0
 async function inspect() {
-  const current = ++serial; kind.value = null; error.value = ''
+  kind.value = null; error.value = ''
   const inferred = inferKindFromPath(props.fileId)
   if (inferred) {
     kind.value = inferred
     return
   }
-  try {
-    const file = await props.reader.download(props.fileId)
-    if (serial !== current) return
-    const mime = file.version.mime.split(';')[0]
-    kind.value = mime.startsWith('image/') ? 'image' : mime.startsWith('audio/') ? 'audio' : mime.startsWith('video/') ? 'video' : 'file'
-  } catch (cause) {
-    if (serial === current) error.value = readerError(cause)
-  }
+  // Auxiliary and unknown formats remain explicit file entries; never probe every file.
+  kind.value = 'file'
 }
 watch(() => [props.reader, props.fileId], inspect, { immediate: true })
-onBeforeUnmount(() => { serial++ })
 </script>
 <template>
   <div class="drama-file" :class="{ tile: thumbnail }">

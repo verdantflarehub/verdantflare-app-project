@@ -199,7 +199,7 @@ test('candidate details preserve review, fixed source and missing scope without 
   assert.doesNotMatch(fixed, /候选制作版本|files\/10.md/)
 })
 
-test('interaction physics tokens, 48-bar 0.7 Gamma waveform, lightbox affine zoom and 4-column revision diff render cleanly', async () => {
+test('interaction physics tokens, honest audio placeholder, lightbox affine zoom and 4-column revision diff render cleanly', async () => {
   const render = renderer(), reader = dramaReader()
   reader.project.manifest.run_refs = [{ service_id: 'video', run_id: 'native-run' }] as never
   const runsHtml = await render.render('components/ProjectShared.vue', { reader, tab: 'runs' })
@@ -209,8 +209,8 @@ test('interaction physics tokens, 48-bar 0.7 Gamma waveform, lightbox affine zoo
     assert(css.includes(token), `expected ${token} in compiled CSS`)
   }
   const audioHtml = await render.render('components/ProjectMedia.vue', { reader, fileId: id(10), kind: 'audio', label: '人声干声' })
-  assert.match(audioHtml, /data-gamma="0\.7"/)
-  assert.equal((audioHtml.match(/class="waveform-bar"/g) || []).length, 48)
+  assert.doesNotMatch(audioHtml, /data-gamma|waveform-bar|<audio/)
+  assert.match(audioHtml, /播放音频/)
   const imageHtml = await render.render('components/ProjectMedia.vue', { reader, fileId: id(10), kind: 'image', label: '角色设定图' })
   assert.match(imageHtml, /zoom-stage/); assert.match(imageHtml, /zoom-readout/); assert.match(imageHtml, /1:1/)
   const mediaCalls: Array<[string, string]> = []
@@ -239,49 +239,30 @@ test('full-film selector defaults to current with only one centered preview', as
   assert.match(html, /选择版本/); assert.match(html, /preview-stage/)
   assert.match(html, /当前版本/); assert.match(html, /舞台结尾/)
   assert.doesNotMatch(html, /带旁白/)
-  assert.equal((html.match(/加载视频/g) || []).length, 1)
+  assert.equal((html.match(/播放视频/g) || []).length, 1)
   reader.content.video.output_file_id = id(12)
   const unmatched = await render.render('components/video/ShortVideoProject.vue', { reader, tab: 'storyboards' })
-  assert.equal((unmatched.match(/加载视频/g) || []).length, 1)
+  assert.equal((unmatched.match(/播放视频/g) || []).length, 1)
   assert.match(unmatched, /aria-label="当前版本"/)
   reader.content.video.output_file_id = null
   const first = await render.render('components/video/ShortVideoProject.vue', { reader, tab: 'storyboards' })
   assert.match(first, /带旁白/); assert.doesNotMatch(first, /舞台结尾/)
-  assert.equal((first.match(/加载视频/g) || []).length, 1)
+  assert.equal((first.match(/播放视频/g) || []).length, 1)
 })
 
-test('ProjectMedia thumbnail mode uses server thumbnail, falls back on failure/415/422, and DramaFile avoids redundant download for image extensions', async () => {
-  const render = renderer(), base = dramaReader()
-  const calls: string[] = []
-  const thumbReader = {
-    ...base,
+test('SSR renders image placeholders and auxiliary file entries without downloading previews or originals', async () => {
+  const render = renderer(), base = dramaReader(), calls: string[] = []
+  const reader = { ...base,
     file: (fileId: string) => ({ file_id: fileId, path: 'files/bath.png', content_ref: base.project.manifest.files[0].content_ref }),
-    download: async () => { calls.push('download'); return { version: { mime: 'image/png', size_bytes: 1024 } } },
-    thumbnail: async (fileId: string, edge: number) => { calls.push(`thumb:${fileId}:${edge}`); return 'blob:thumb-webp' },
-    media: async (fileId: string, kind: string) => { calls.push(`media:${fileId}:${kind}`); return 'blob:orig-png' },
+    download: async () => { calls.push('download'); throw new Error('unexpected') },
+    thumbnail: async () => { calls.push('thumbnail'); return 'blob:thumb' },
+    media: async () => { calls.push('original'); return 'blob:original' },
   }
-  const fileHtml = await render.render('components/drama/DramaFile.vue', { reader: thumbReader, fileId: id(10), label: '浴室一角', thumbnail: true })
-  assert.equal(calls.includes('download'), false, 'DramaFile should infer image kind from .png path without calling download()')
-  assert.deepEqual(calls, [`thumb:${id(10)}:640`])
-  assert.match(fileHtml, /blob:thumb-webp/)
-
-  const fallbackReader = {
-    ...thumbReader,
-    thumbnail: async () => { throw new Error('503 busy') },
-  }
-  const fallbackHtml = await render.render('components/ProjectMedia.vue', { reader: fallbackReader, fileId: id(10), kind: 'image', label: '回退原图', thumbnail: true })
-  assert.match(fallbackHtml, /blob:orig-png/)
-
-  const err415 = Object.assign(new Error('unsupported media'), { status: 415 })
-  const nonImageReader = { ...thumbReader, thumbnail: async () => { throw err415 } }
-  const nonImageHtml = await render.render('components/ProjectMedia.vue', { reader: nonImageReader, fileId: id(10), kind: 'image', label: '非图片条目', thumbnail: true })
-  assert.match(nonImageHtml, /media-state thumb-frame/)
-  assert.doesNotMatch(nonImageHtml, /blob:orig-png/)
-
-  const err422 = Object.assign(new Error('oversized'), { status: 422 })
-  const oversizedReader = { ...thumbReader, thumbnail: async () => { throw err422 } }
-  const oversizedHtml = await render.render('components/ProjectMedia.vue', { reader: oversizedReader, fileId: id(10), kind: 'image', label: '超大图条目', thumbnail: true })
-  assert.match(oversizedHtml, /原图较大 · 点击查看/)
+  const html = await render.render('components/drama/DramaFile.vue', { reader, fileId: id(10), label: '浴室一角', thumbnail: true })
+  assert.deepEqual(calls, []); assert.doesNotMatch(html, /blob:thumb|blob:original/)
+  reader.file = fileId => ({ file_id: fileId, path: 'files/scene.exr', content_ref: base.project.manifest.files[0].content_ref })
+  const file = await render.render('components/drama/DramaFile.vue', { reader, fileId: id(10), label: '源工程', thumbnail: true })
+  assert.deepEqual(calls, []); assert.match(file, /准备下载/)
 })
 
 test('drama production view renders 16:9 storyboard wall, 4-tier camera previs fallback, single-line 36px toolbar and scene filter', async () => {

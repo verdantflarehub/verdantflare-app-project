@@ -789,6 +789,50 @@
     }
   },
   {
+    "name": "project.thumbnail",
+    "description": "Read a cached image thumbnail or video poster from an authorized fixed project revision; never changes project files.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "ProjectThumbnailRequest",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "project_id",
+        "revision_id",
+        "file_id",
+        "edge"
+      ],
+      "properties": {
+        "project_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+        },
+        "revision_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+        },
+        "file_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+        },
+        "edge": {
+          "type": "integer",
+          "enum": [
+            320,
+            640
+          ]
+        },
+        "preview": {
+          "type": "string",
+          "enum": [
+            "poster"
+          ],
+          "description": "Generate a fixed first-frame video poster. Omit for an image thumbnail."
+        }
+      }
+    }
+  },
+  {
     "name": "project.review_open",
     "description": "Read one fixed set-review target, authorized evidence and immutable review history.",
     "inputSchema": {

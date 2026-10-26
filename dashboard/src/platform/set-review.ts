@@ -1,3 +1,5 @@
+import { fixedMedia, forgetFixedMedia } from './media-descriptor.ts'
+import { ProjectReads } from './project-reads.ts'
 import type { AppSDK, Context, Json } from './types.ts'
 
 export type ReviewLocator = { kind: 'project'; project_id: string; content_revision_id: string; material_key: string; state_key: string; version_key: string } | { kind: 'world'; asset_id: string; asset_version_id: string }
@@ -237,7 +239,7 @@ export function createReviewClient(sdk: AppSDK, domain: 'project' | 'world', loc
   return { open, begin, submit, status, readback, pending, clearRejected: clear, isTerminal: () => terminal, dispose: () => { disposed = true; cancel(); stopContext(); stopLife() } }
 }
 export function controlledReviewPath(value: unknown) {
-  if (typeof value !== 'string' || !/^\/studio\/dashboards\/[0-9a-f-]{36}\/content\/[0-9a-f-]{36}$/.test(value)) throw new ReviewError('INVALID_RESPONSE')
+  if (typeof value !== 'string' || !/^\/studio\/(?:dashboards\/[0-9a-f-]{36}\/content\/[0-9a-f-]{36}|media\/[a-f0-9]{64}\/[a-f0-9]{64}\/(?:original-v1|thumbnail-(?:320|640)-v1))$/.test(value)) throw new ReviewError('INVALID_RESPONSE')
   return value
 }
 /** Consume the viewer's approved fixed-package route; the host resolves installation and authority. */
@@ -251,15 +253,27 @@ export function reviewViewerTarget(locator: ReviewLocator, manifest: unknown, ca
   }
   return { appId: 'viewer', path: `/${locator.kind}/${owner(locator)}?${query}` }
 }
-export async function readEvidence(sdk: AppSDK, locator: ReviewLocator, e: Evidence, signal: AbortSignal): Promise<Blob> {
-  const access = locator.kind === 'project' ? { project_id: locator.project_id, project_revision_id: locator.content_revision_id } : { asset_id: locator.asset_id, asset_version_id: locator.asset_version_id }
-  const r = obj(await sdk.capabilities.call('artifact.read', { mode: 'download', content_ref: e.content_ref, access } as unknown as Json, { signal })), v = obj(r.version)
-  if (v.store_id !== e.content_ref.store_id || v.artifact_id !== e.content_ref.artifact_id || v.version_id !== e.content_ref.version_id || !hashOK(v.sha256) || typeof v.mime !== 'string' || !Number.isSafeInteger(v.size) || Number(v.size) <= 0 || Number(v.size) > 128 * 1024 * 1024 || e.sha256 && v.sha256 !== e.sha256 || e.size_bytes && v.size !== e.size_bytes) throw new ReviewError('INVALID_RESPONSE')
-  const response = await fetch(controlledReviewPath(r.content_path), { credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal })
-  if (!response.ok) throw new ReviewError(response.status === 403 ? 'PERMISSION_DENIED' : 'CONTENT_NOT_READY', response.status)
-  const bytes = await response.arrayBuffer()
-  if (signal.aborted || bytes.byteLength !== v.size || await reviewRequestHashBytes(bytes) !== v.sha256) throw new ReviewError('INVALID_RESPONSE')
-  return new Blob([bytes], { type: v.mime.split(';')[0].toLowerCase() })
+const evidenceReads = new ProjectReads(error => error instanceof ReviewError && [404,429,502,503,504].includes(error.status))
+export function readEvidence(sdk: AppSDK, locator: ReviewLocator, e: Evidence, signal: AbortSignal, thumbnail = false, eligible: () => boolean = () => true): Promise<Blob> {
+  return evidenceReads.run(async () => {
+    if (signal.aborted || !eligible()) throw new DOMException('素材已离开可视范围。', 'AbortError')
+    const access = locator.kind === 'project' ? { project_id: locator.project_id, project_revision_id: locator.content_revision_id } : { asset_id: locator.asset_id, asset_version_id: locator.asset_version_id }
+    const representation = thumbnail ? 'thumbnail-320-v1' : 'original-v1'
+    const r = obj(await fixedMedia([locator.kind, locator.kind === 'project' ? locator.project_id : locator.asset_id, e.content_ref, representation], () => sdk.capabilities.call('artifact.read', { mode: 'download', content_ref: e.content_ref, access, representation } as unknown as Json, { signal }))), v = obj(r.version)
+    if (v.store_id !== e.content_ref.store_id || v.artifact_id !== e.content_ref.artifact_id || v.version_id !== e.content_ref.version_id || !hashOK(v.sha256) || typeof v.mime !== 'string' || !Number.isSafeInteger(v.size) || Number(v.size) <= 0 || Number(v.size) > 128 * 1024 * 1024 || e.sha256 && v.sha256 !== e.sha256 || e.size_bytes && v.size !== e.size_bytes) throw new ReviewError('INVALID_RESPONSE')
+    if (signal.aborted || !eligible()) throw new DOMException('素材已离开可视范围。', 'AbortError')
+    const path = controlledReviewPath(r.content_path)
+    const response = await fetch(path, { credentials: 'same-origin', cache: path.startsWith('/studio/media/') ? 'default' : 'no-store', redirect: 'error', signal })
+    if (!response.ok) { if (response.status === 404) forgetFixedMedia(); throw new ReviewError(response.status === 403 ? 'PERMISSION_DENIED' : 'CONTENT_NOT_READY', response.status) }
+    const bytes = await response.arrayBuffer()
+    if (signal.aborted) throw new DOMException('读取已取消。', 'AbortError')
+    if (thumbnail) {
+      if (response.headers.get('Content-Type')?.split(';')[0] !== 'image/webp' || bytes.byteLength > 4 * 1024 * 1024) throw new ReviewError('INVALID_RESPONSE')
+      return new Blob([bytes], { type: 'image/webp' })
+    }
+    if (bytes.byteLength !== v.size || await reviewRequestHashBytes(bytes) !== v.sha256) throw new ReviewError('INVALID_RESPONSE')
+    return new Blob([bytes], { type: v.mime.split(';')[0].toLowerCase() })
+  }, 1, () => !signal.aborted && eligible(), !thumbnail)
 }
 async function reviewRequestHashBytes(bytes: ArrayBuffer) { return [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(v => v.toString(16).padStart(2, '0')).join('') }
 

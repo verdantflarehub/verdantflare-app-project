@@ -8,6 +8,10 @@ const tick = () => new Promise(resolve => setImmediate(resolve))
 
 test('thumbnail bursts share four read slots with documents, deduplicate, and cancel queued work', async () => {
   const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
+  const previousLocation = Object.getOwnPropertyDescriptor(globalThis, 'location')
+  const previousFetch = globalThis.fetch
+  Object.defineProperty(globalThis, 'location', { configurable: true, value: { origin: 'https://studio.test' } })
+  globalThis.fetch = async () => new Response(new Uint8Array([1]), { headers: { 'Content-Type': 'image/webp' } })
   const pending: Array<() => void> = []
   let active = 0, peak = 0, thumbnails = 0, documents = 0
   const enter = () => { active++; peak = Math.max(peak, active) }
@@ -19,16 +23,12 @@ test('thumbnail bursts share four read slots with documents, deduplicate, and ca
     theme: { subscribe: () => () => {} },
     navigation: { subscribe: () => () => {} },
     lifecycle: { subscribe: () => () => {} },
-    app: { request: async () => {
-      enter(); thumbnails++
+    capabilities: { call: async (_name: string, args: any) => {
+      enter()
+      if (args.representation.startsWith('thumbnail-')) thumbnails++
+      else documents++
       await new Promise<void>(resolve => pending.push(resolve)); leave()
-      return { status: 200, data: { mime: 'image/webp', data: 'AA==' } }
-    } },
-    capabilities: { call: async () => {
-      enter(); documents++
-      await new Promise<void>(resolve => pending.push(resolve)); leave()
-      // Invalid fixed-version metadata must fail without loading any media.
-      return { mode: 'text', text: '', version: null }
+      return { mode: 'download', version: { ...args.content_ref, mime: 'image/png', size: 1, sha256: 'a'.repeat(64) }, content_path: `/studio/media/${'a'.repeat(64)}/${'b'.repeat(64)}/${args.representation}` }
     } },
   }
   Object.defineProperty(globalThis, 'window', { configurable: true, value: { $wujie: { props: {
@@ -50,6 +50,7 @@ test('thumbnail bursts share four read slots with documents, deduplicate, and ca
     const duplicate = reader.thumbnail(uuid(3), 640)
     const burst = Array.from({ length: 52 }, (_, i) => reader.thumbnail(uuid(i + 4), 640))
     const document = reader.document(uuid(56)).catch(error => error)
+    const completion = Promise.allSettled([...burst, document])
     await tick()
     assert.equal(thumbnails, 4)
     assert.equal(documents, 0)
@@ -58,20 +59,37 @@ test('thumbnail bursts share four read slots with documents, deduplicate, and ca
     const [url, sameURL] = await Promise.all([first, duplicate])
     assert.equal(url, sameURL)
     await tick()
-    assert.equal(thumbnails, 8)
-    const completion = Promise.allSettled([...burst, document])
+    assert.equal(thumbnails, 7)
     reader.dispose()
     pending.splice(0).forEach(resolve => resolve())
     await completion
-    assert.equal(thumbnails, 8, 'disposed readers must not start queued thumbnails')
-    assert.equal(documents, 0, 'queued documents share the same limit and cancellation')
+    assert.equal(thumbnails, 7, 'disposed readers must not start queued thumbnails')
+    assert.equal(documents, 1, 'interactive reads take the next slot before automatic previews')
     assert.equal(peak, 4)
     assert.equal(active, 0)
   } finally {
     reader.dispose(); disconnectHost()
     if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow)
     else Reflect.deleteProperty(globalThis, 'window')
+    globalThis.fetch = previousFetch
+    if (previousLocation) Object.defineProperty(globalThis, 'location', previousLocation)
+    else Reflect.deleteProperty(globalThis, 'location')
   }
+})
+
+test('queued previews recheck visibility before starting network work', async () => {
+  const { ProjectReads } = await import('../src/platform/project-reads.ts')
+  const reads = new ProjectReads(() => false, 1)
+  let release!: () => void, visible = true, started = 0
+  const first = reads.run(() => new Promise<void>(resolve => { release = resolve }))
+  const queued = reads.run(async () => { started++ }, 0, () => visible)
+  const result = assert.rejects(queued, { name: 'AbortError' })
+  visible = false; release(); await first; await result
+  assert.equal(started, 0)
+  visible = true
+  await reads.run(async () => { started++ }, 0, () => visible)
+  assert.equal(started, 1)
+  reads.dispose()
 })
 
 test('a queued operation with its own retry does not receive another retry layer', async () => {

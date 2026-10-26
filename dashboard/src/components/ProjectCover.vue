@@ -1,50 +1,29 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, shallowRef } from "vue";
-import { ProjectReader, type ProjectItem } from "../platform/project-reader";
-import ProjectMedia from "./ProjectMedia.vue";
-import { useHost } from '../platform/host';
-import { coverFile, defaultCoverPosition, type CoverPosition } from '../platform/cover-position';
-const props = defineProps<{ project: ProjectItem }>();
-const root = ref<HTMLElement | null>(null),
-  reader = shallowRef<ProjectReader | null>(null),
-  fileID = ref<string | null>(null);
-let observer: IntersectionObserver | undefined,
-  disposed = false;
-let stopLifecycle = () => {};
-const position = ref<CoverPosition>(defaultCoverPosition());
-function load() {
-  reader.value?.dispose();
-  fileID.value = null;
-  const next = new ProjectReader(props.project.project_id, props.project.head_revision_id);
-  reader.value = next;
-  void next.load().then(() => {
-    if (!disposed && reader.value === next) {
-      fileID.value = coverFile(next.content);
-      position.value = next.content?.cover_position || defaultCoverPosition();
-    }
-  }).catch(() => {});
-}
-onMounted(() => {
-  stopLifecycle = useHost().appSDK.lifecycle.subscribe(event => {
-    if (event === 'hidden') { reader.value?.dispose(); reader.value = null; fileID.value = null; }
-    if (event === 'active' && root.value && root.value.getBoundingClientRect().top < window.innerHeight + 100) load();
-  });
-  observer = new IntersectionObserver(
-    (entries) => {
-      if (!entries.some((e) => e.isIntersecting)) return;
-      observer?.disconnect();
-      load();
-    },
-    { rootMargin: "100px" },
-  );
-  if (root.value) observer.observe(root.value);
-});
-onBeforeUnmount(() => {
-  disposed = true;
-  observer?.disconnect();
-  stopLifecycle();
-  reader.value?.dispose();
-});
+import { onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { ProjectReader, type ProjectItem } from '../platform/project-reader'
+import ProjectMedia from './ProjectMedia.vue'
+import { useVisible } from '../platform/visible'
+import { coverFile, defaultCoverPosition, type CoverPosition } from '../platform/cover-position'
+const props = defineProps<{ project: ProjectItem }>()
+const root = ref<HTMLElement | null>(null), visible = useVisible(root)
+const reader = shallowRef<ProjectReader | null>(null), fileID = ref<string | null>(null)
+const position = ref<CoverPosition>(defaultCoverPosition())
+let generation = 0
+watch(() => [props.project.project_id, props.project.head_revision_id], () => {
+  generation++; reader.value?.dispose(); reader.value = null; fileID.value = null
+})
+watch(() => [visible.value, props.project.project_id, props.project.head_revision_id], async () => {
+  if (!visible.value || reader.value) return
+  const current = ++generation, next = new ProjectReader(props.project.project_id, props.project.head_revision_id)
+  reader.value = next
+  try {
+    await next.load()
+    if (current !== generation) return
+    fileID.value = coverFile(next.content)
+    position.value = next.content?.cover_position || defaultCoverPosition()
+  } catch { if (current === generation) { next.dispose(); reader.value = null } }
+})
+onBeforeUnmount(() => { generation++; reader.value?.dispose() })
 </script>
 
 <template>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onServerPrefetch, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useVisible } from '../platform/visible'
 import { useHost } from '../platform/host'
 import { ProjectReader, readerError } from '../platform/project-reader'
 import { previewImage, closePreview } from '../platform/media-preview'
@@ -11,6 +12,8 @@ import {
 } from '../platform/set-viewer-entry'
 export interface MediaGallery { id: string; items: { fileId: string; label: string }[]; index: number }
 const props = withDefaults(defineProps<{ reader: ProjectReader; fileId?: string | null; kind: 'image' | 'audio' | 'video' | 'file'; label: string; thumbnail?: boolean; contain?: boolean; edge?: 320 | 640; objectPosition?: { x: number; y: number }; gallery?: MediaGallery }>(), { thumbnail: false, contain: false, edge: 320 })
+const root = ref<HTMLElement | null>(null), visible = useVisible(root)
+const posterSource = ref(''), posterBusy = ref(false), posterFailed = ref(false)
 const source = ref(''), lightboxSource = ref(''), lightboxLabel = ref(''), error = ref(''), busy = ref(false), downloadPath = ref('')
 const viewerState = ref<ViewerLaunchOutcome | 'idle'>('idle'), viewerBusy = ref(false)
 const matchedSetPackage = computed(() => findSetPackageForFile(props.reader.project?.manifest.files, props.fileId))
@@ -53,22 +56,9 @@ const videoOpen = ref(false)
 const zoomScale = ref(1), zoomTx = ref(0), zoomTy = ref(0), isDragging = ref(false)
 let dragStartX = 0, dragStartY = 0
 let generation = 0
-let videoRequest = 0
+let videoRequest = 0, imageRequest = 0
 let lastTrigger: HTMLElement | null = null
 const previewOwner = {}, previewError = ref('')
-
-const waveformBars = computed(() => {
-  const seed = `${props.fileId || ''}:${props.label || 'audio'}`
-  let hash = 2166136261
-  for (let i = 0; i < seed.length; i++) hash = Math.imul(hash ^ seed.charCodeAt(i), 16777619)
-  const bars: number[] = []
-  for (let i = 0; i < 48; i++) {
-    hash = Math.imul(hash ^ (i + 17), 16777619)
-    const norm = 0.15 + ((Math.abs(hash) % 85) / 100)
-    bars.push(Math.max(4, Math.round(Math.pow(norm, 0.7) * 24)))
-  }
-  return bars
-})
 
 const hasGallery = computed(() => (props.gallery?.items.length || 0) > 1)
 
@@ -76,12 +66,14 @@ function clampZoom(next: number) { return Math.max(0.5, Math.min(5, Math.round(n
 function resetZoom() { zoomScale.value = 1; zoomTx.value = 0; zoomTy.value = 0; isDragging.value = false }
 function stepZoom(delta: number) { zoomScale.value = clampZoom(zoomScale.value + delta) }
 async function openLightbox(event?: Event) {
+  const current = generation, request = ++imageRequest
   if (event?.currentTarget instanceof HTMLElement) lastTrigger = event.currentTarget
   previewError.value = ''
   activeGalleryIndex.value = props.gallery?.index ?? 0
   lightboxLabel.value = props.label
   try {
-    const preview = (props.thumbnail || oversizedThumb.value) && props.fileId ? await props.reader.media(props.fileId, 'image') : source.value
+    const preview = props.fileId ? await props.reader.media(props.fileId, 'image') : source.value
+    if (current !== generation || request !== imageRequest || !visible.value) return
     const galleryMeta = props.gallery && props.gallery.items.length > 1 ? { id: props.gallery.id, index: activeGalleryIndex.value, count: props.gallery.items.length } : undefined
     if (await previewImage(previewOwner, preview, props.label, galleryMeta)) return
     lightboxSource.value = preview
@@ -122,7 +114,7 @@ function closeVideo() {
   videoViewer.value?.close()
   lastTrigger?.focus?.()
 }
-function closeLightbox() { closePreview(previewOwner); resetZoom(); viewer.value?.close(); closeVideo(); lastTrigger?.focus?.() }
+function closeLightbox() { imageRequest++; closePreview(previewOwner); resetZoom(); viewer.value?.close(); closeVideo(); lastTrigger?.focus?.() }
 function onWheelZoom(e: WheelEvent) {
   const stage = e.currentTarget as HTMLElement | null
   const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15
@@ -150,7 +142,7 @@ function onPointerMove(e: PointerEvent) {
 }
 function onPointerUp() { isDragging.value = false }
 
-async function load() {
+async function load(automatic = false) {
   const current = ++generation
   source.value = ''; lightboxSource.value = ''; error.value = ''; downloadPath.value = ''; oversizedThumb.value = false; nonImageFallback.value = false; busy.value = true
   try {
@@ -159,19 +151,16 @@ async function load() {
       const read = await props.reader.download(props.fileId)
       if (current === generation) downloadPath.value = read.content_path
     } else {
-      if (props.thumbnail && props.kind === 'image' && typeof props.reader.thumbnail === 'function') {
+      if (props.kind === 'image' && typeof props.reader.thumbnail === 'function') {
         try {
-          const thumb = await props.reader.thumbnail(props.fileId, props.edge === 640 ? 640 : 320)
+          const thumb = await props.reader.thumbnail(props.fileId, props.edge === 640 || !props.thumbnail ? 640 : 320, automatic ? () => visible.value : undefined)
           if (current === generation) { source.value = thumb; return }
-        } catch (thumbErr) {
-          if (current !== generation) return
-          const status = (thumbErr as { status?: number } | null)?.status
+        } catch (cause) {
+          if (current !== generation || (cause as Error)?.name === 'AbortError') return
+          const status = (cause as { status?: number })?.status
           if (status === 415) { nonImageFallback.value = true; return }
-          if (status === 422) { oversizedThumb.value = true; return }
-          const read = await props.reader.download(props.fileId)
-          if (current !== generation) return
-          if (!read.version.mime.toLowerCase().startsWith('image/')) { nonImageFallback.value = true; return }
-          if (read.version.size > 8 * 1024 * 1024) { oversizedThumb.value = true; return }
+          if (status === 422 || status === 413) { oversizedThumb.value = true; return }
+          throw cause
         }
       }
       const result = await props.reader.media(props.fileId, props.kind)
@@ -186,27 +175,32 @@ async function prepareDownload() {
   try { const read = await props.reader.download(props.fileId); if (current === generation) downloadPath.value = read.content_path }
   catch (cause) { if (current === generation) error.value = readerError(cause) }
 }
-let activeLoad: Promise<void> | null = null
-watch(() => [props.reader, props.fileId, props.kind, props.thumbnail], () => {
-  generation++; source.value = ''; lightboxSource.value = ''; error.value = ''; downloadPath.value = ''; oversizedThumb.value = false; nonImageFallback.value = false; busy.value = false
+watch(() => [props.reader, props.fileId, props.kind, props.thumbnail, props.edge], () => {
+  generation++; posterSource.value = ''; posterBusy.value = false; posterFailed.value = false; source.value = ''; lightboxSource.value = ''; error.value = ''; downloadPath.value = ''; oversizedThumb.value = false; nonImageFallback.value = false; busy.value = false
   closeLightbox()
-  if (props.kind === 'image' && props.fileId) activeLoad = load()
-  else activeLoad = null
 }, { immediate: true })
-onServerPrefetch(async () => { if (typeof props.reader.thumbnail === 'function' && activeLoad) await activeLoad })
+watch(() => [visible.value, props.reader, props.fileId, props.kind, props.thumbnail, props.edge, busy.value, posterBusy.value], () => {
+  if (visible.value && props.kind === 'image' && props.fileId && !source.value && !busy.value && !error.value && !oversizedThumb.value && !nonImageFallback.value) void load(true)
+  if (visible.value && props.kind === 'video' && props.thumbnail && props.fileId && !posterSource.value && !posterBusy.value && !posterFailed.value && typeof props.reader.poster === 'function') {
+    const current = generation
+    posterBusy.value = true
+    void props.reader.poster(props.fileId, props.edge, () => visible.value && current === generation)
+      .then(url => { if (current === generation) posterSource.value = url })
+      .catch(cause => { if (current === generation && cause?.name !== 'AbortError') posterFailed.value = true })
+      .finally(() => { if (current === generation) posterBusy.value = false })
+  }
+}, { flush: 'post' })
+watch(visible, value => { if (!value) closeLightbox() })
 onBeforeUnmount(() => { generation++; closeLightbox() })
 </script>
 
 <template>
-  <div class="project-media" :class="[kind, { thumbnail, contain }]" :aria-label="label">
+  <div ref="root" class="project-media" :class="[kind, { thumbnail, contain }]" :aria-label="label">
     <p v-if="previewError" role="alert">{{ previewError }}</p>
-    <div v-if="kind === 'audio' && (source || fileId)" class="waveform-strip" data-gamma="0.7" aria-hidden="true">
-      <span v-for="(barHeight, idx) in waveformBars" :key="idx" class="waveform-bar" :style="{ height: `${barHeight}px` }" />
-    </div>
     <button v-if="kind === 'video' && thumbnail && fileId" type="button" class="video-open" :aria-label="`播放${label}`" :disabled="busy" @click="openVideo($event)">
       <span v-if="busy" role="status">正在读取…</span>
       <span v-else-if="error" role="alert">{{ error }}</span>
-      <span v-else class="video-open-badge">▶ 播放视频</span>
+      <template v-else><img v-if="posterSource" :src="posterSource" alt="" class="video-poster"><span class="video-open-badge">▶ 播放视频</span></template>
     </button>
     <button v-else-if="kind === 'image' && oversizedThumb && fileId" type="button" class="image-open oversized-thumb" :aria-label="`放大${label}`" @click="openLightbox($event)">
       <span>原图较大 · 点击查看</span>
@@ -223,10 +217,10 @@ onBeforeUnmount(() => { generation++; closeLightbox() })
     <div v-else class="media-state" :class="{ 'thumb-frame': thumbnail && kind === 'file' }">
       <span v-if="!fileId">{{ kind === 'image' ? '未添加图片' : kind === 'audio' ? '未添加音频' : kind === 'video' ? '未添加视频' : '未添加文件' }}</span>
       <span v-else-if="busy" role="status">正在读取…</span>
-      <template v-else-if="error"><span role="alert">{{ error }}</span><button class="btn" @click.stop.prevent="load">重试</button><button v-if="!thumbnail && !downloadPath" class="btn" @click="prepareDownload">下载查看</button></template>
+      <template v-else-if="error"><span role="alert">{{ error }}</span><button class="btn" @click.stop.prevent="load()">重试</button><button v-if="!thumbnail && !downloadPath" class="btn" @click="prepareDownload">下载查看</button></template>
       <template v-else-if="kind === 'file' && matchedSetPackage">
         <button type="button" class="btn primary" :disabled="viewerBusy" @click="openInSetViewer">在片场查看器中打开</button>
-        <button v-if="!downloadPath" type="button" class="btn" @click="load">准备下载 {{ label }}</button>
+        <button v-if="!downloadPath" type="button" class="btn" @click="load()">准备下载 {{ label }}</button>
         <a v-if="downloadPath" class="btn" :href="downloadPath" download>下载 {{ label }}</a>
         <div v-if="viewerState === 'not_installed'" class="set-viewer-fallback" role="status">
           <strong>当前工作站尚未安装「片场查看器 (viewer)」</strong>
@@ -235,7 +229,7 @@ onBeforeUnmount(() => { generation++; closeLightbox() })
         </div>
         <p v-else-if="viewerState === 'forbidden'" class="set-viewer-fallback" role="alert">当前会话无权打开片场查看器或读取此固定修订。</p>
       </template>
-      <button v-else-if="!downloadPath" class="btn" @click="load">{{ kind === 'file' ? `准备下载 ${label}` : kind === 'audio' ? '加载音频' : '加载视频' }}</button>
+      <button v-else-if="!downloadPath" class="btn" @click="load()">{{ kind === 'file' ? `准备下载 ${label}` : kind === 'image' ? '加载预览' : kind === 'audio' ? '播放音频' : '播放视频' }}</button>
       <a v-if="downloadPath" class="btn" :href="downloadPath" download>{{ kind === 'file' ? `下载 ${label}` : '下载文件' }}</a>
     </div>
     <dialog v-if="kind === 'video' && thumbnail" ref="videoViewer" class="lightbox-dialog video-dialog" :aria-label="label" @click="($event.target === videoViewer) && closeVideo()" @cancel.prevent="closeVideo()" @close="videoOpen = false">
@@ -269,6 +263,7 @@ onBeforeUnmount(() => { generation++; closeLightbox() })
 .image, .video { border-radius: 12px; background: var(--subtle); overflow: hidden; border: 0.5px solid var(--vf-hairline-outer, var(--line)); }
 .image-open, .video-open { position: relative; display: grid; place-items: center; width: 100%; height: 100%; min-height: 0; padding: 0; border: 0; background: transparent; color: inherit; cursor: zoom-in; }
 .oversized-thumb { min-height: 120px; padding: 16px; color: var(--muted); font-size: 13px; }
+.video-poster { width: 100%; max-height: 100%; object-fit: contain; }
 .video-open { cursor: pointer; padding: 16px; color: var(--muted); }
 .video-open-badge { font-size: 13px; }
 .video-dialog video { width: min(92vw, 1280px); max-height: 80vh; object-fit: contain; background: #111; }
