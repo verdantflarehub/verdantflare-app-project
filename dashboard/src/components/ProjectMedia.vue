@@ -59,6 +59,20 @@ let generation = 0
 let videoRequest = 0, imageRequest = 0
 let lastTrigger: HTMLElement | null = null
 const previewOwner = {}, previewError = ref('')
+let galleryOff: (() => void) | undefined
+let ownsGallery = false
+let gallerySession = 0
+async function navigateGallery(event: { id: string; index: number }) {
+  if (!ownsGallery || event.id !== props.gallery?.id) return
+  if (event.index === -1) { closeLightbox(); return }
+  const target = props.gallery.items[event.index]
+  if (!target) throw new Error('无效图片')
+  const current = generation, request = ++imageRequest
+  const preview = await props.reader.media(target.fileId, 'image')
+  if (!ownsGallery || current !== generation || request !== imageRequest) return
+  activeGalleryIndex.value = event.index
+  await previewImage(previewOwner, preview, target.label, { id: props.gallery.id, index: event.index, count: props.gallery.items.length })
+}
 
 const hasGallery = computed(() => (props.gallery?.items.length || 0) > 1)
 
@@ -75,6 +89,10 @@ async function openLightbox(event?: Event) {
     const preview = props.fileId ? await props.reader.media(props.fileId, 'image') : source.value
     if (current !== generation || request !== imageRequest || !visible.value) return
     const galleryMeta = props.gallery && props.gallery.items.length > 1 ? { id: props.gallery.id, index: activeGalleryIndex.value, count: props.gallery.items.length } : undefined
+    galleryOff?.()
+    ownsGallery = true
+    const session = ++gallerySession
+    galleryOff = useHost().appSDK.media?.subscribeGallery?.(event => session === gallerySession ? navigateGallery(event) : Promise.resolve())
     if (await previewImage(previewOwner, preview, props.label, galleryMeta)) return
     lightboxSource.value = preview
     resetZoom(); viewer.value?.showModal()
@@ -114,7 +132,7 @@ function closeVideo() {
   videoViewer.value?.close()
   lastTrigger?.focus?.()
 }
-function closeLightbox() { imageRequest++; closePreview(previewOwner); resetZoom(); viewer.value?.close(); closeVideo(); lastTrigger?.focus?.() }
+function closeLightbox() { gallerySession++; ownsGallery = false; galleryOff?.(); galleryOff = undefined; imageRequest++; closePreview(previewOwner); resetZoom(); viewer.value?.close(); closeVideo(); lastTrigger?.focus?.() }
 function onWheelZoom(e: WheelEvent) {
   const stage = e.currentTarget as HTMLElement | null
   const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15

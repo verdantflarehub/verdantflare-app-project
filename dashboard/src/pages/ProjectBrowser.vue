@@ -5,6 +5,7 @@ import { callTool, MCPRequestError } from '../platform/mcp'
 import { isProjectID, ProjectReader, readerError, projectContentView, type AssetReference, type Detail, type ProjectItem } from '../platform/project-reader'
 import { worldTarget } from '../platform/route-links'
 import ProjectMedia from '../components/ProjectMedia.vue'
+import CharacterReferences from '../components/CharacterReferences.vue'
 import MusicDetail from '../components/MusicDetail.vue'
 import MusicCards from '../components/MusicCards.vue'
 import { musicReturnRoute } from '../platform/music-production'
@@ -413,6 +414,7 @@ onBeforeUnmount(() => { closeEdit(); alive = false; request++; listRequest++; na
           <template v-if="character && activeTab?.key === 'setting'">
             <section class="panel"><h2>基本信息</h2><div class="character-basic"><div><ProjectMedia :reader="reader" :file-id="character.portrait_file_id" kind="image" label="半身照" /><ProjectPrompt :text="character.portrait_prompt" /></div><div><dl class="fields"><dt>姓名</dt><dd>{{ value(character.name) }}</dd><dt>概述</dt><dd>{{ value(content.overview) }}</dd><template v-for="(field, i) in character.fields" :key="i"><dt>{{ field.label }}</dt><dd>{{ value(field.value) }}</dd></template></dl></div></div></section>
             <section class="panel"><h2>角色设定图</h2><ProjectMedia :reader="reader" :file-id="character.sheet_file_id" kind="image" label="角色设定图" /><ProjectPrompt :text="character.sheet_prompt" /></section>
+            <CharacterReferences :reader="reader" :groups="character.reference_groups || []" />
           </template>
           <template v-else-if="music && activeTab?.key === 'voice'">
             <section class="panel"><h2>基本信息</h2><dl class="fields"><dt>姓名</dt><dd>{{ value(music.voice.name || music.artist) }}</dd><dt>专辑</dt><dd>{{ value(music.name) }}</dd><dt>概述</dt><dd>{{ value(music.voice.description || content.overview) }}</dd></dl></section>

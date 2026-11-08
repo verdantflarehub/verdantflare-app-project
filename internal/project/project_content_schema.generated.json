@@ -2148,6 +2148,51 @@
           "sheet_prompt": {
             "$ref": "#/$defs/text"
           },
+          "reference_groups": {
+            "type": "array",
+            "maxItems": 1000,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "key",
+                "title",
+                "images"
+              ],
+              "properties": {
+                "key": {
+                  "$ref": "#/$defs/key"
+                },
+                "title": {
+                  "$ref": "#/$defs/name"
+                },
+                "images": {
+                  "type": "array",
+                  "maxItems": 32,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "key",
+                      "label",
+                      "file_id"
+                    ],
+                    "properties": {
+                      "key": {
+                        "$ref": "#/$defs/key"
+                      },
+                      "label": {
+                        "$ref": "#/$defs/name"
+                      },
+                      "file_id": {
+                        "$ref": "#/$defs/id"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
           "fields": {
             "$ref": "#/$defs/fields"
           },

@@ -11,6 +11,7 @@ export interface ProjectOpen {
 }
 export interface RunRef { service_id: string; run_id: string }
 export interface AssetRef { asset_id: string; asset_version_id: string; purpose: string }
+export interface CharacterReferenceGroup { key: string; title: string; images: { key: string; label: string; file_id: string }[] }
 export interface Field { label: string; value: string | null }
 export interface Detail {
   production?: MusicProduction
@@ -116,7 +117,7 @@ export interface ProjectContent {
   schema_version: 1; kind: 'project-content'; category: Category; overview: string | null; cover_file_id: string | null
   cover_position?: CoverPosition; cover_placeholder?: boolean
   image?: ImageContent
-  character?: { name: string | null; portrait_file_id: string | null; portrait_prompt: string | null; sheet_file_id: string | null; sheet_prompt: string | null; fields: Field[]; extensions: Detail[] }
+  character?: { name: string | null; portrait_file_id: string | null; portrait_prompt: string | null; sheet_file_id: string | null; sheet_prompt: string | null; fields: Field[]; extensions: Detail[]; reference_groups?: CharacterReferenceGroup[] }
   music?: { artist: string | null; name: string | null; voice: { name: string | null; description: string | null; recordings: Detail[]; models: Detail[] }; songs: Detail[]; mvs: Detail[] }
   video?: { duration_seconds: number | null; aspect: string | null; output_file_id: string | null; outputs?: Detail[]; storyboards: Detail[]; cast: Cast[] }
   ai_short_drama?: { script_file_id: string | null; aspect: string | null; globals: DramaGlobal[]; usages: DramaUsage[]; deliverables: DramaDeliverable[]; world_candidates: DramaWorldCandidate[]; continuity: DramaContinuity[]; episodes: DramaEpisode[] }
@@ -168,7 +169,18 @@ export function parseProjectContent(raw: string, project: ProjectOpen): ProjectC
   if (result.cover_placeholder && result.cover_file_id) invalid()
   const body = object(d[category])
   if (category === 'image') result.image = parseImageContent(body, project)
-  if (category === 'character') result.character = { name: text(body.name), portrait_file_id: reference(body.portrait_file_id), portrait_prompt: text(body.portrait_prompt), sheet_file_id: reference(body.sheet_file_id), sheet_prompt: text(body.sheet_prompt), fields: fields(body.fields), extensions: details(body.extensions) }
+  const referenceGroups = (value: unknown): CharacterReferenceGroup[] => unique(array(value, item => {
+    const group = object(item), key = required(group.key)
+    if (!/^[a-zA-Z0-9_-]+$/.test(key)) invalid()
+    if (!Array.isArray(group.images) || group.images.length > 32) invalid()
+    return { key, title: required(group.title), images: unique(array(group.images, item => {
+      const image = object(item), key = required(image.key)
+      if (!/^[a-zA-Z0-9_-]+$/.test(key)) invalid()
+      return { key, label: required(image.label), file_id: reference(image.file_id) || invalid() }
+    })) }
+  }))
+  if (body.reference_groups !== undefined && !Array.isArray(body.reference_groups)) invalid()
+  if (category === 'character') result.character = { name: text(body.name), portrait_file_id: reference(body.portrait_file_id), portrait_prompt: text(body.portrait_prompt), sheet_file_id: reference(body.sheet_file_id), sheet_prompt: text(body.sheet_prompt), fields: fields(body.fields), extensions: details(body.extensions), reference_groups: referenceGroups(body.reference_groups) }
   if (category === 'music') {
     const voice = body.voice == null ? {} : object(body.voice)
     result.music = { artist: text(body.artist), name: text(body.name), voice: { name: text(voice.name), description: text(voice.description), recordings: details(voice.recordings), models: details(voice.models, 'voice') }, songs: details(body.songs, 'songs'), mvs: details(body.mvs, 'mvs') }

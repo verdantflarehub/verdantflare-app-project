@@ -69,3 +69,17 @@ test('image works keep versions and fixed file references', () => {
  ]) {const b=structuredClone(body);mutate(b);assert.throws(()=>parse(b))}
  assert.equal(parse({...body,image:{}}).image?.works.length,0)
 })
+
+
+test('character reference groups preserve order and reject dangling or duplicate identities', () => {
+  const group = { key: 'eye', title: '平视', images: [{ key: 'P01', label: '左侧回头', file_id: id(3) }] }
+  const parse = (groups?: unknown) => parseProjectContent(JSON.stringify({ schema_version: 1, kind: 'project-content', category: 'character', character: { name: 'Original', reference_groups: groups } }), project).character!
+  assert.deepEqual(parse().reference_groups, [])
+  assert.deepEqual(parse([group]).reference_groups, [group])
+  assert.equal(parse([group]).name, 'Original')
+  assert.throws(() => parse([group, group]), /格式/)
+  assert.throws(() => parse([{ ...group, images: [...group.images, ...group.images] }]), /格式/)
+  assert.throws(() => parse([{ ...group, images: [{ ...group.images[0], file_id: id(99) }] }]), /当前项目修订/)
+  assert.throws(() => parse([{ ...group, images: [{ ...group.images[0], file_id: null }] }]), /格式/)
+  assert.throws(() => parse(null), /格式/)
+})
