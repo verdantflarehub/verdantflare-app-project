@@ -125,14 +125,16 @@ async function openVideo(event?: Event) {
   videoViewer.value.showModal()
   videoOpen.value = true
 }
-function closeVideo() {
+function closeVideo(restoreFocus = true) {
   videoRequest++
   videoViewer.value?.querySelector('video')?.pause()
   videoOpen.value = false
   videoViewer.value?.close()
-  lastTrigger?.focus?.()
+  const trigger = lastTrigger
+  lastTrigger = null
+  if (restoreFocus && trigger?.isConnected) trigger.focus({ preventScroll: true })
 }
-function closeLightbox() { gallerySession++; ownsGallery = false; galleryOff?.(); galleryOff = undefined; imageRequest++; closePreview(previewOwner); resetZoom(); viewer.value?.close(); closeVideo(); lastTrigger?.focus?.() }
+function closeLightbox(restoreFocus = true) { gallerySession++; ownsGallery = false; galleryOff?.(); galleryOff = undefined; imageRequest++; closePreview(previewOwner); resetZoom(); viewer.value?.close(); closeVideo(restoreFocus) }
 function onWheelZoom(e: WheelEvent) {
   const stage = e.currentTarget as HTMLElement | null
   const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15
@@ -195,7 +197,7 @@ async function prepareDownload() {
 }
 watch(() => [props.reader, props.fileId, props.kind, props.thumbnail, props.edge], () => {
   generation++; posterSource.value = ''; posterBusy.value = false; posterFailed.value = false; source.value = ''; lightboxSource.value = ''; error.value = ''; downloadPath.value = ''; oversizedThumb.value = false; nonImageFallback.value = false; busy.value = false
-  closeLightbox()
+  closeLightbox(false)
 }, { immediate: true })
 watch(() => [visible.value, props.reader, props.fileId, props.kind, props.thumbnail, props.edge, busy.value, posterBusy.value], () => {
   if (visible.value && props.kind === 'image' && props.fileId && !source.value && !busy.value && !error.value && !oversizedThumb.value && !nonImageFallback.value) void load(true)
@@ -208,8 +210,8 @@ watch(() => [visible.value, props.reader, props.fileId, props.kind, props.thumbn
       .finally(() => { if (current === generation) posterBusy.value = false })
   }
 }, { flush: 'post' })
-watch(visible, value => { if (!value) closeLightbox() })
-onBeforeUnmount(() => { generation++; closeLightbox() })
+watch(visible, value => { if (!value) closeLightbox(false) })
+onBeforeUnmount(() => { generation++; closeLightbox(false) })
 </script>
 
 <template>

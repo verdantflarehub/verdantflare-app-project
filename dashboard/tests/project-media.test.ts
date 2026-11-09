@@ -125,6 +125,37 @@ test('visible image uses a thumbnail and only an explicit lightbox action reads 
   } finally { view.dispose() }
 })
 
+test('closing a preview restores focus once without scrolling; later visibility cleanup never refocuses old tiles', async () => {
+  const view = videoComponent(async () => 'blob:original', 'image', async () => 'blob:preview')
+  const focusCalls: unknown[] = []
+  const trigger = Object.assign(new HTMLElement(), { isConnected: true, focus: (options: unknown) => focusCalls.push(options) })
+  try {
+    view.visible.value = true; await nextTick()
+    await view.state.openLightbox({ currentTarget: trigger })
+    view.state.closeLightbox()
+    assert.deepEqual(focusCalls, [{ preventScroll: true }])
+    view.visible.value = false; await nextTick()
+    view.visible.value = true; await nextTick()
+    view.visible.value = false; await nextTick()
+    view.props.fileId = 'another-image'; await nextTick()
+    assert.equal(focusCalls.length, 1)
+  } finally { view.dispose() }
+  assert.equal(focusCalls.length, 1)
+})
+
+test('hiding an active preview cancels it without pulling focus back into an offscreen tile', async () => {
+  const view = videoComponent(async () => 'blob:original', 'image', async () => 'blob:preview')
+  let focuses = 0
+  const trigger = Object.assign(new HTMLElement(), { isConnected: true, focus: () => focuses++ })
+  try {
+    view.visible.value = true; await nextTick()
+    await view.state.openLightbox({ currentTarget: trigger })
+    view.visible.value = false; await nextTick()
+    view.state.closeLightbox()
+    assert.equal(focuses, 0)
+  } finally { view.dispose() }
+})
+
 
 test('a cancelled queued image resumes after reentry without an original fallback', async () => {
   let reject!: (cause: Error) => void, attempts = 0
