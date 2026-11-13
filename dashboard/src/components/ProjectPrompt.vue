@@ -2,9 +2,37 @@
 import { ref } from 'vue'
 defineProps<{ text?: string | null }>()
 const message = ref('')
+function fallbackCopy(text: string): boolean {
+  if (typeof document === 'undefined' || !document.body || typeof document.createElement !== 'function' || typeof document.execCommand !== 'function') return false
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.setAttribute('readonly', '')
+  textarea.style.position = 'fixed'
+  textarea.style.top = '0'
+  textarea.style.left = '0'
+  textarea.style.opacity = '0'
+  textarea.style.pointerEvents = 'none'
+  document.body.appendChild(textarea)
+  try {
+    textarea.focus?.()
+    textarea.select?.()
+    textarea.setSelectionRange?.(0, textarea.value.length)
+    return document.execCommand('copy') === true
+  } catch {
+    return false
+  } finally {
+    if (typeof textarea.remove === 'function') textarea.remove()
+    else textarea.parentNode?.removeChild?.(textarea)
+  }
+}
 async function copy(text: string) {
-  try { await navigator.clipboard.writeText(text); message.value = '已复制' }
-  catch { message.value = '复制失败，请选择文字复制。' }
+  try {
+    if (!navigator?.clipboard?.writeText) throw new Error('CLIPBOARD_UNAVAILABLE')
+    await navigator.clipboard.writeText(text)
+    message.value = '已复制'
+  } catch {
+    message.value = fallbackCopy(text) ? '已复制' : '复制失败，请选择文字复制。'
+  }
 }
 </script>
 

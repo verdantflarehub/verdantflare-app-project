@@ -75,8 +75,8 @@ test('cards render collapsed per-image prompts only and never inherit the extens
   assert.match(html, /复制提示词/)
 })
 
-test('prompt copy sends original whitespace and reports clipboard failure honestly', async () => {
-  const previous = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+test('prompt copy succeeds via primary navigator.clipboard and preserves original whitespace', async () => {
+  const previousClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
   const copied: string[] = []
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (text: string) => { copied.push(text) } } })
   const view = setupComponent('ProjectPrompt', {})
@@ -84,12 +84,112 @@ test('prompt copy sends original whitespace and reports clipboard failure honest
     await view.state.copy('  first\n第二行\n')
     assert.deepEqual(copied, ['  first\n第二行\n'])
     assert.equal(view.state.message.value, '已复制')
-    navigator.clipboard.writeText = async () => { throw new Error('denied') }
-    await view.state.copy('text')
-    assert.match(view.state.message.value, /复制失败/)
   } finally {
     view.dispose()
-    if (previous) Object.defineProperty(navigator, 'clipboard', previous)
+    if (previousClipboard) Object.defineProperty(navigator, 'clipboard', previousClipboard)
     else Reflect.deleteProperty(navigator, 'clipboard')
+  }
+})
+
+test('prompt copy falls back to temporary textarea selection when navigator.clipboard fails', async () => {
+  const previousClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document')
+  const fallbackCopied: string[] = []
+  const appended: any[] = []
+  let activeSelection = ''
+  const fakeBody = {
+    appendChild(el: any) { appended.push(el); el.parentNode = fakeBody; return el },
+    removeChild(el: any) { const idx = appended.indexOf(el); if (idx >= 0) appended.splice(idx, 1); el.parentNode = null },
+  }
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText: async () => { throw new DOMException('Document is not focused', 'NotAllowedError') } },
+  })
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    value: {
+      body: fakeBody,
+      createElement(tag: string) {
+        assert.equal(tag, 'textarea')
+        const attrs: Record<string, string> = {}
+        const el: any = {
+          value: '',
+          style: {},
+          parentNode: null,
+          focused: false,
+          selectedRange: null as [number, number] | null,
+          setAttribute(k: string, v: string) { attrs[k] = v },
+          focus() { el.focused = true },
+          select() { activeSelection = el.value },
+          setSelectionRange(start: number, end: number) { el.selectedRange = [start, end]; activeSelection = el.value.slice(start, end) },
+          remove() { fakeBody.removeChild(el) },
+        }
+        return el
+      },
+      execCommand(cmd: string) {
+        assert.equal(cmd, 'copy')
+        fallbackCopied.push(activeSelection)
+        return true
+      },
+    },
+  })
+  const view = setupComponent('ProjectPrompt', {})
+  try {
+    await view.state.copy('  fallback\n提示词原文\n')
+    assert.deepEqual(fallbackCopied, ['  fallback\n提示词原文\n'])
+    assert.equal(appended.length, 0)
+    assert.equal(view.state.message.value, '已复制')
+  } finally {
+    view.dispose()
+    if (previousClipboard) Object.defineProperty(navigator, 'clipboard', previousClipboard)
+    else Reflect.deleteProperty(navigator, 'clipboard')
+    if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument)
+    else Reflect.deleteProperty(globalThis, 'document')
+  }
+})
+
+test('prompt copy reports honest failure message when both primary clipboard and textarea fallback fail', async () => {
+  const previousClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document')
+  const appended: any[] = []
+  const fakeBody = {
+    appendChild(el: any) { appended.push(el); el.parentNode = fakeBody; return el },
+    removeChild(el: any) { const idx = appended.indexOf(el); if (idx >= 0) appended.splice(idx, 1); el.parentNode = null },
+  }
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText: async () => { throw new DOMException('Document is not focused', 'NotAllowedError') } },
+  })
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    value: {
+      body: fakeBody,
+      createElement() {
+        const el: any = {
+          value: '',
+          style: {},
+          parentNode: null,
+          setAttribute() {},
+          focus() {},
+          select() {},
+          setSelectionRange() {},
+          remove() { fakeBody.removeChild(el) },
+        }
+        return el
+      },
+      execCommand() { return false },
+    },
+  })
+  const view = setupComponent('ProjectPrompt', {})
+  try {
+    await view.state.copy('still fails')
+    assert.equal(appended.length, 0)
+    assert.equal(view.state.message.value, '复制失败，请选择文字复制。')
+  } finally {
+    view.dispose()
+    if (previousClipboard) Object.defineProperty(navigator, 'clipboard', previousClipboard)
+    else Reflect.deleteProperty(navigator, 'clipboard')
+    if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument)
+    else Reflect.deleteProperty(globalThis, 'document')
   }
 })
