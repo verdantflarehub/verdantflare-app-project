@@ -6,6 +6,7 @@ import { isProjectID, ProjectReader, readerError, projectContentView, type Asset
 import { worldTarget } from '../platform/route-links'
 import ProjectMedia from '../components/ProjectMedia.vue'
 import CharacterReferences from '../components/CharacterReferences.vue'
+import CharacterResults from '../components/CharacterResults.vue'
 import MusicDetail from '../components/MusicDetail.vue'
 import MusicCards from '../components/MusicCards.vue'
 import { musicReturnRoute } from '../platform/music-production'
@@ -407,7 +408,7 @@ onBeforeUnmount(() => { closeEdit(); alive = false; request++; listRequest++; na
           <section class="panel"><h2>概述</h2><p class="prose">{{ value(detail.overview) }}</p><p v-if="detail.duration_seconds != null" class="muted tabular-nums">{{ duration(detail.duration_seconds) }}</p><dl v-if="detail.fields.length" class="fields"><template v-for="(field, i) in detail.fields" :key="i"><dt>{{ field.label }}</dt><dd>{{ value(field.value) }}</dd></template></dl></section>
           <section class="panel"><h2>参考图</h2><div v-if="detail.reference_file_ids.length" class="reference-row"><ProjectMedia v-for="(id, i) in detail.reference_file_ids" :key="`${id}:${i}`" :reader="reader" :file-id="id" kind="image" :label="`参考图 ${i + 1}`" /></div><p v-else class="muted">未添加图片</p><ProjectPrompt :text="detail.prompt" /></section>
           <section v-if="activeTab?.key === 'songs'" class="panel"><h2>歌词</h2><p class="prose">{{ value(detail.lyrics) }}</p></section>
-          <section class="panel"><h2>{{ resultKind === 'image' ? '结果图' : resultKind === 'audio' ? '歌曲' : '结果视频' }}</h2><div class="sections"><ProjectMedia v-for="(id, i) in detail.result_file_ids" :key="`${id}:${i}`" :reader="reader" :file-id="id" :kind="resultKind" :label="`${detail.title} ${i + 1}`" /><ProjectMedia v-if="!detail.result_file_ids.length" :reader="reader" :kind="resultKind" :label="detail.title" /></div></section>
+          <section class="panel"><h2>{{ resultKind === 'image' ? '结果图' : resultKind === 'audio' ? '歌曲' : '结果视频' }}</h2><CharacterResults v-if="character" :reader="reader" :detail="detail" /><div v-else class="sections"><ProjectMedia v-for="(id, i) in detail.result_file_ids" :key="`${id}:${i}`" :reader="reader" :file-id="id" :kind="resultKind" :label="`${detail.title} ${i + 1}`" /><ProjectMedia v-if="!detail.result_file_ids.length" :reader="reader" :kind="resultKind" :label="detail.title" /></div></section>
           <section v-if="detail.file_ids.length" class="panel"><h2>文件</h2><ProjectMedia v-for="id in detail.file_ids" :key="id" :reader="reader" :file-id="id" kind="file" :label="reader.file(id).path" /></section>
         </article>
         <div v-else :key="`${project.revision_id}:${activeTab?.key}`" class="sections">

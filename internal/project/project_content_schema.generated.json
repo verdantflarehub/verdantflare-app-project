@@ -2197,7 +2197,51 @@
             "$ref": "#/$defs/fields"
           },
           "extensions": {
-            "$ref": "#/$defs/details"
+            "type": [
+              "array",
+              "null"
+            ],
+            "maxItems": 1000,
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/detail"
+                },
+                {
+                  "properties": {
+                    "result_meta": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "description": "Metadata keyed by result_file_ids; readers ignore other keys. Missing or null means empty metadata.",
+                      "additionalProperties": {
+                        "type": [
+                          "object",
+                          "null"
+                        ],
+                        "properties": {
+                          "label": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "maxLength": 40
+                          },
+                          "prompt": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    }
+                  }
+                }
+              ]
+            }
           }
         }
       },

@@ -5,6 +5,21 @@ import { controlledContentPath, parseProjectContent, type ProjectOpen } from '..
 const id = (n: number) => `0192f3d4-0000-7000-8000-${String(n).padStart(12, '0')}`
 const project: ProjectOpen = { project_id: id(1), revision_id: id(2), manifest: { name: 'Example', category: 'character', files: [{ file_id: id(3), path: 'portrait.png', content_ref: { store_id: id(4), artifact_id: id(5), version_id: id(6) } }], domain_documents: [] } }
 
+test('extension result metadata is optional, scoped to results and preserves exact prompts', () => {
+  const parse = (meta?: unknown) => parseProjectContent(JSON.stringify({ schema_version: 1, kind: 'project-content', category: 'character', character: { extensions: [{ key: 'host', title: 'Host', result_file_ids: [id(3)], result_meta: meta }] } }), project).character!.extensions[0]
+  assert.deepEqual(parse().result_meta, {})
+  assert.deepEqual(parse(null).result_meta, {})
+  assert.deepEqual(parse({ [id(3)]: null }).result_meta, {})
+  assert.deepEqual(parse({ [id(3)]: { label: null, prompt: null }, [id(99)]: 42 }).result_meta, { [id(3)]: {} })
+  const metadata = { [id(3)]: { label: '全身 C01', prompt: '  First line\n第二行\n' } }
+  assert.deepEqual(parse(metadata).result_meta, metadata)
+  assert.deepEqual(parse(JSON.parse(JSON.stringify(parse(metadata).result_meta))).result_meta, metadata)
+  assert.equal(parse({ [id(3)]: { label: '🙂'.repeat(40) } }).result_meta![id(3)].label, '🙂'.repeat(40))
+  assert.throws(() => parse({ [id(3)]: { label: '字'.repeat(41) } }), /格式/)
+  assert.throws(() => parse({ [id(3)]: { prompt: 123 } }), /格式/)
+  assert.throws(() => parse([]), /格式/)
+})
+
 test('business media must exist in this exact project revision', () => {
   const body = { schema_version: 1, kind: 'project-content', category: 'character', character: { name: 'Example', portrait_file_id: id(3) } }
   assert.equal(parseProjectContent(JSON.stringify(body), project).character?.portrait_file_id, id(3))

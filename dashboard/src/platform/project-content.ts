@@ -13,7 +13,9 @@ export interface RunRef { service_id: string; run_id: string }
 export interface AssetRef { asset_id: string; asset_version_id: string; purpose: string }
 export interface CharacterReferenceGroup { key: string; title: string; images: { key: string; label: string; file_id: string }[] }
 export interface Field { label: string; value: string | null }
+export interface ResultMeta { label?: string; prompt?: string }
 export interface Detail {
+  result_meta?: Record<string, ResultMeta>
   production?: MusicProduction
   key: string; title: string; overview: string | null; fields: Field[]; image_file_id: string | null
   reference_file_ids: string[]; result_file_ids: string[]; file_ids: string[]
@@ -151,10 +153,21 @@ export function parseProjectContent(raw: string, project: ProjectOpen): ProjectC
   const references = (value: unknown) => array(value, item => reference(item) || invalid())
   const fields = (value: unknown): Field[] => array(value, item => { const f = object(item); return { label: required(f.label), value: text(f.value) } })
   const unique = <T extends { key: string }>(items: T[]): T[] => new Set(items.map(i => i.key)).size === items.length ? items : invalid()
-  const details = (value: unknown, musicGroup?: MusicGroup): Detail[] => unique(array(value, item => {
+  const details = (value: unknown, musicGroup?: MusicGroup, characterExtension = false): Detail[] => unique(array(value, item => {
     const d = object(item), key = required(d.key)
     if (!/^[a-zA-Z0-9_-]+$/.test(key)) invalid()
-    return { key, title: required(d.title), overview: text(d.overview), fields: fields(d.fields), image_file_id: reference(d.image_file_id), reference_file_ids: references(d.reference_file_ids), result_file_ids: references(d.result_file_ids), file_ids: references(d.file_ids), prompt: text(d.prompt), lyrics: text(d.lyrics), duration_seconds: number(d.duration_seconds), ...(musicGroup && d.production !== undefined ? { production: parseMusicProduction(d.production, project, musicGroup) } : {}) }
+    const resultFiles = references(d.result_file_ids)
+    const resultMeta: Record<string, ResultMeta> = {}
+    if (characterExtension && d.result_meta != null) {
+      const meta = object(d.result_meta)
+      for (const id of resultFiles) {
+        if (meta[id] == null) continue
+        const entry = object(meta[id]), label = text(entry.label), prompt = text(entry.prompt)
+        if (label !== null && [...label].length > 40) invalid()
+        resultMeta[id] = { ...(label != null ? { label } : {}), ...(prompt != null ? { prompt } : {}) }
+      }
+    }
+    return { key, title: required(d.title), overview: text(d.overview), fields: fields(d.fields), image_file_id: reference(d.image_file_id), reference_file_ids: references(d.reference_file_ids), result_file_ids: resultFiles, ...(characterExtension ? { result_meta: resultMeta } : {}), file_ids: references(d.file_ids), prompt: text(d.prompt), lyrics: text(d.lyrics), duration_seconds: number(d.duration_seconds), ...(musicGroup && d.production !== undefined ? { production: parseMusicProduction(d.production, project, musicGroup) } : {}) }
   }))
   let json: unknown
   try { json = JSON.parse(raw) } catch { return invalid() }
@@ -180,7 +193,7 @@ export function parseProjectContent(raw: string, project: ProjectOpen): ProjectC
     })) }
   }))
   if (body.reference_groups !== undefined && !Array.isArray(body.reference_groups)) invalid()
-  if (category === 'character') result.character = { name: text(body.name), portrait_file_id: reference(body.portrait_file_id), portrait_prompt: text(body.portrait_prompt), sheet_file_id: reference(body.sheet_file_id), sheet_prompt: text(body.sheet_prompt), fields: fields(body.fields), extensions: details(body.extensions), reference_groups: referenceGroups(body.reference_groups) }
+  if (category === 'character') result.character = { name: text(body.name), portrait_file_id: reference(body.portrait_file_id), portrait_prompt: text(body.portrait_prompt), sheet_file_id: reference(body.sheet_file_id), sheet_prompt: text(body.sheet_prompt), fields: fields(body.fields), extensions: details(body.extensions, undefined, true), reference_groups: referenceGroups(body.reference_groups) }
   if (category === 'music') {
     const voice = body.voice == null ? {} : object(body.voice)
     result.music = { artist: text(body.artist), name: text(body.name), voice: { name: text(voice.name), description: text(voice.description), recordings: details(voice.recordings), models: details(voice.models, 'voice') }, songs: details(body.songs, 'songs'), mvs: details(body.mvs, 'mvs') }

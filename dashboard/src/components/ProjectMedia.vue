@@ -11,6 +11,11 @@ import {
   type ViewerLaunchOutcome,
 } from '../platform/set-viewer-entry'
 export interface MediaGallery { id: string; items: { fileId: string; label: string }[]; index: number }
+const emit = defineEmits<{ imageSize: [width: number, height: number] }>()
+function imageLoaded(event: Event) {
+  const image = event.target as HTMLImageElement
+  emit('imageSize', image.naturalWidth, image.naturalHeight)
+}
 const props = withDefaults(defineProps<{ reader: ProjectReader; fileId?: string | null; kind: 'image' | 'audio' | 'video' | 'file'; label: string; thumbnail?: boolean; contain?: boolean; edge?: 320 | 640; objectPosition?: { x: number; y: number }; gallery?: MediaGallery }>(), { thumbnail: false, contain: false, edge: 320 })
 const root = ref<HTMLElement | null>(null), visible = useVisible(root)
 const posterSource = ref(''), posterBusy = ref(false), posterFailed = ref(false)
@@ -229,7 +234,7 @@ onBeforeUnmount(() => { generation++; closeLightbox(false) })
       <span>{{ label }}</span>
     </div>
     <template v-else-if="source">
-      <button v-if="kind === 'image' && thumbnail" type="button" class="image-open" :aria-label="`放大${label}`" @click="openLightbox($event)"><img :src="source" :alt="label" loading="lazy" :style="objectPosition ? { objectPosition: `${objectPosition.x}% ${objectPosition.y}%` } : undefined" @error="error = '图片解码失败。'; source = ''"></button>
+      <button v-if="kind === 'image' && thumbnail" type="button" class="image-open" :aria-label="`放大${label}`" @click="openLightbox($event)"><img :src="source" :alt="label" loading="lazy" @load="imageLoaded" :style="objectPosition ? { objectPosition: `${objectPosition.x}% ${objectPosition.y}%` } : undefined" @error="error = '图片解码失败。'; source = ''"></button>
       <button v-else-if="kind === 'image'" type="button" class="image-open" :aria-label="`放大${label}`" @click="openLightbox($event)"><img :src="source" :alt="label" @error="error = '图片解码失败。'; source = ''"></button>
       <audio v-else-if="kind === 'audio'" :src="source" controls preload="metadata" :aria-label="label" @error="error = '浏览器无法播放此音频。'; source = ''" />
       <video v-else :src="source" controls playsinline preload="metadata" :aria-label="label" @error="error = '浏览器无法播放此视频。'; source = ''" />
