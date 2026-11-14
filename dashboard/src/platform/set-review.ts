@@ -239,7 +239,7 @@ export function createReviewClient(sdk: AppSDK, domain: 'project' | 'world', loc
   return { open, begin, submit, status, readback, pending, clearRejected: clear, isTerminal: () => terminal, dispose: () => { disposed = true; cancel(); stopContext(); stopLife() } }
 }
 export function controlledReviewPath(value: unknown) {
-  if (typeof value !== 'string' || !/^\/studio\/(?:dashboards\/[0-9a-f-]{36}\/content\/[0-9a-f-]{36}|media\/[a-f0-9]{64}\/[a-f0-9]{64}\/(?:original-v1|thumbnail-(?:320|640)-v1))$/.test(value)) throw new ReviewError('INVALID_RESPONSE')
+  if (typeof value !== 'string' || !/^\/studio\/(?:dashboards\/[0-9a-f-]{36}\/content\/[0-9a-f-]{36}|media\/[a-f0-9]{64}\/[a-f0-9]{64}\/(?:original-v1|thumbnail-(?:320|640)-v(?:1|2)))$/.test(value)) throw new ReviewError('INVALID_RESPONSE')
   return value
 }
 /** Consume the viewer's approved fixed-package route; the host resolves installation and authority. */
@@ -258,7 +258,7 @@ export function readEvidence(sdk: AppSDK, locator: ReviewLocator, e: Evidence, s
   return evidenceReads.run(async () => {
     if (signal.aborted || !eligible()) throw new DOMException('素材已离开可视范围。', 'AbortError')
     const access = locator.kind === 'project' ? { project_id: locator.project_id, project_revision_id: locator.content_revision_id } : { asset_id: locator.asset_id, asset_version_id: locator.asset_version_id }
-    const representation = thumbnail ? 'thumbnail-320-v1' : 'original-v1'
+    const representation = thumbnail ? 'thumbnail-320-v2' : 'original-v1'
     const r = obj(await fixedMedia([locator.kind, locator.kind === 'project' ? locator.project_id : locator.asset_id, e.content_ref, representation], () => sdk.capabilities.call('artifact.read', { mode: 'download', content_ref: e.content_ref, access, representation } as unknown as Json, { signal }))), v = obj(r.version)
     if (v.store_id !== e.content_ref.store_id || v.artifact_id !== e.content_ref.artifact_id || v.version_id !== e.content_ref.version_id || !hashOK(v.sha256) || typeof v.mime !== 'string' || !Number.isSafeInteger(v.size) || Number(v.size) <= 0 || Number(v.size) > 128 * 1024 * 1024 || e.sha256 && v.sha256 !== e.sha256 || e.size_bytes && v.size !== e.size_bytes) throw new ReviewError('INVALID_RESPONSE')
     if (signal.aborted || !eligible()) throw new DOMException('素材已离开可视范围。', 'AbortError')

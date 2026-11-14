@@ -16,8 +16,15 @@ function imageLoaded(event: Event) {
   const image = event.target as HTMLImageElement
   emit('imageSize', image.naturalWidth, image.naturalHeight)
 }
-const props = withDefaults(defineProps<{ reader: ProjectReader; fileId?: string | null; kind: 'image' | 'audio' | 'video' | 'file'; label: string; thumbnail?: boolean; contain?: boolean; edge?: 320 | 640; objectPosition?: { x: number; y: number }; gallery?: MediaGallery }>(), { thumbnail: false, contain: false, edge: 320 })
+const props = withDefaults(defineProps<{ reader: ProjectReader; fileId?: string | null; kind: 'image' | 'audio' | 'video' | 'file'; label: string; thumbnail?: boolean; contain?: boolean; edge?: 320 | 640; objectPosition?: { x: number; y: number }; gallery?: MediaGallery }>(), { thumbnail: false, contain: false })
 const root = ref<HTMLElement | null>(null), visible = useVisible(root)
+function resolvedEdge(): 320 | 640 {
+  if (props.edge === 640 || !props.thumbnail) return 640
+  if (props.edge === 320) return 320
+  const el = root.value
+  const dpr = Math.max(1, Number(globalThis.devicePixelRatio) || 1)
+  return Math.max(el?.clientWidth || 0, el?.clientHeight || 0) * dpr > 320 ? 640 : 320
+}
 const posterSource = ref(''), posterBusy = ref(false), posterFailed = ref(false)
 const source = ref(''), lightboxSource = ref(''), lightboxLabel = ref(''), error = ref(''), busy = ref(false), downloadPath = ref('')
 const viewerState = ref<ViewerLaunchOutcome | 'idle'>('idle'), viewerBusy = ref(false)
@@ -178,7 +185,7 @@ async function load(automatic = false) {
     } else {
       if (props.kind === 'image' && typeof props.reader.thumbnail === 'function') {
         try {
-          const thumb = await props.reader.thumbnail(props.fileId, props.edge === 640 || !props.thumbnail ? 640 : 320, automatic ? () => visible.value : undefined)
+          const thumb = await props.reader.thumbnail(props.fileId, resolvedEdge(), automatic ? () => visible.value : undefined)
           if (current === generation) { source.value = thumb; return }
         } catch (cause) {
           if (current !== generation || (cause as Error)?.name === 'AbortError') return
@@ -209,7 +216,7 @@ watch(() => [visible.value, props.reader, props.fileId, props.kind, props.thumbn
   if (visible.value && props.kind === 'video' && props.thumbnail && props.fileId && !posterSource.value && !posterBusy.value && !posterFailed.value && typeof props.reader.poster === 'function') {
     const current = generation
     posterBusy.value = true
-    void props.reader.poster(props.fileId, props.edge, () => visible.value && current === generation)
+    void props.reader.poster(props.fileId, resolvedEdge(), () => visible.value && current === generation)
       .then(url => { if (current === generation) posterSource.value = url })
       .catch(cause => { if (current === generation && cause?.name !== 'AbortError') posterFailed.value = true })
       .finally(() => { if (current === generation) posterBusy.value = false })

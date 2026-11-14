@@ -185,3 +185,45 @@ test('unsupported and oversized previews remain manual entries without retry sto
     } finally {view.dispose()}
   }
 })
+
+test('thumbnail edge resolves explicit overrides and auto-upgrades wide HiDPI containers to 640', async () => {
+  const previousDPR = Object.getOwnPropertyDescriptor(globalThis, 'devicePixelRatio')
+  Object.defineProperty(globalThis, 'devicePixelRatio', { configurable: true, value: 2 })
+  const requestedEdges: number[] = []
+  const view = videoComponent(async () => 'blob:original', 'image', async (_fileId, edge) => {
+    requestedEdges.push(edge)
+    return `blob:thumb-${edge}`
+  })
+  try {
+    // Unspecified edge in a zero-size DOM defaults to 320.
+    view.visible.value = true
+    await nextTick()
+    await new Promise(resolve => setImmediate(resolve))
+    assert.deepEqual(requestedEdges, [320])
+
+    // Wide container (> 320 physical pixels at DPR=2) auto-selects 640 when edge is unspecified.
+    view.state.root.value = { clientWidth: 220, clientHeight: 140 }
+    view.props.fileId = 'wide-card-cover'
+    await nextTick()
+    await new Promise(resolve => setImmediate(resolve))
+    assert.deepEqual(requestedEdges, [320, 640])
+
+    // Explicit edge=320 overrides container size; explicit edge=640 overrides compact container.
+    ;(view.props as any).edge = 320
+    view.props.fileId = 'compact-strip-cover'
+    await nextTick()
+    await new Promise(resolve => setImmediate(resolve))
+    assert.deepEqual(requestedEdges, [320, 640, 320])
+
+    view.state.root.value = { clientWidth: 80, clientHeight: 80 }
+    ;(view.props as any).edge = 640
+    view.props.fileId = 'explicit-wide-cover'
+    await nextTick()
+    await new Promise(resolve => setImmediate(resolve))
+    assert.deepEqual(requestedEdges, [320, 640, 320, 640])
+  } finally {
+    view.dispose()
+    if (previousDPR) Object.defineProperty(globalThis, 'devicePixelRatio', previousDPR)
+    else Reflect.deleteProperty(globalThis, 'devicePixelRatio')
+  }
+})

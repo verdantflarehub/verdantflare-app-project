@@ -925,7 +925,7 @@ function fileGallery(groupId: string, fileIds: string[], index: number, prefix: 
             <div class="material-grid">
               <article v-for="look in relatedLooks" :key="look.key" class="look-card">
                 <RouterLink :to="materialLink(look, undefined, materialPreview(look).version?.state_key)">
-                  <ProjectMedia v-if="materialPreview(look).fileId" :reader="reader" :file-id="materialPreview(look).fileId" kind="image" :label="look.name" thumbnail />
+                  <ProjectMedia v-if="materialPreview(look).fileId" :reader="reader" :file-id="materialPreview(look).fileId" kind="image" :label="look.name" thumbnail :edge="640" />
                   <h3>{{ look.name }}</h3>
                 </RouterLink>
                 <nav class="state-links" :aria-label="`${look.name}的状态`">
