@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { dramaText } from '../../platform/drama-presentation'
 import type { ProjectContent } from '../../platform/project-content'
-const props = defineProps<{ text?: string | null; drama?: ProjectContent['ai_short_drama']; hideProductionNotes?: boolean }>()
+const props = defineProps<{ text?: string | null; drama?: ProjectContent['ai_short_drama']; hideProductionNotes?: boolean; subduedHeadings?: boolean }>()
 type Line = { heading?: boolean; cells: { label?: string; parts: string[] }[] }
 // Render authored Markdown as escaped Vue text; never execute embedded HTML.
 const lines = computed(() => {
@@ -26,7 +26,7 @@ const lines = computed(() => {
   return result
 })
 </script>
-<template><div class="drama-prose"><div v-for="(line, i) in lines" :key="i" :class="{ 'text-record': line.cells.some(c => c.label) }"><component :is="line.heading ? 'h3' : 'p'" v-for="(cell, k) in line.cells" :key="k"><strong v-if="cell.label">{{ cell.label }}：</strong><template v-for="(part, j) in cell.parts" :key="j"><strong v-if="part.startsWith('**') && part.endsWith('**')">{{ part.slice(2, -2) }}</strong><template v-else>{{ part }}</template></template></component></div></div></template>
+<template><div class="drama-prose" :class="{ subdued: subduedHeadings }"><div v-for="(line, i) in lines" :key="i" :class="{ 'text-record': line.cells.some(c => c.label) }"><component :is="line.heading ? (subduedHeadings ? 'h4' : 'h3') : 'p'" v-for="(cell, k) in line.cells" :key="k"><strong v-if="cell.label">{{ cell.label }}：</strong><template v-for="(part, j) in cell.parts" :key="j"><strong v-if="part.startsWith('**') && part.endsWith('**')">{{ part.slice(2, -2) }}</strong><template v-else>{{ part }}</template></template></component></div></div></template>
 <style scoped>
-.drama-prose { font-size:14px; line-height:1.95; overflow-wrap:anywhere; }p { margin:0 0 8px; white-space:pre-wrap; }h3 { font-size:17px; font-weight:600; margin:22px 0 12px; }strong { font-weight:600; }.text-record { padding:14px 0; border-bottom:1px solid var(--line); }
+.drama-prose { font-size:14px; line-height:1.95; overflow-wrap:anywhere; }.drama-prose.subdued { font-size:13px; line-height:1.8; }p { margin:0 0 8px; white-space:pre-wrap; }h3 { font-size:17px; font-weight:600; margin:22px 0 12px; }h4 { font-size:13.5px; font-weight:620; margin:12px 0 6px; color:var(--ink); }strong { font-weight:600; }.text-record { padding:14px 0; border-bottom:1px solid var(--line); }
 </style>

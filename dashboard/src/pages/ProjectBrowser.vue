@@ -27,6 +27,7 @@ import { hasProjectEditRecovery } from '../platform/project-edit'
 import { sourceReturnCategory } from '../platform/project-source'
 import { dramaBreadcrumb, dramaBrowserTarget, dramaHref, parseDramaPath } from '../platform/drama-route.ts'
 
+const props = defineProps<{ testReader?: ProjectReader }>()
 const route = useRoute(), router = useRouter()
 function closeImageMenu(event: Event) {
   if (event.type === 'keydown' || (event.target as HTMLElement).closest('a,button')) {
@@ -75,7 +76,7 @@ const deletedFilter = computed(() => query('deleted') === 'true')
 async function lifecycleChanged() { listCache.clear(); if (projectID.value) await router.replace(listLink.value); else await loadList() }
 function deleteCurrent() { if (project.value) lifecycleDialog.value?.open({ project_id: project.value.project_id, head_revision_id: project.value.head_revision_id!, name: project.value.manifest.name, category: project.value.manifest.category, can_delete: project.value.can_delete, lifecycle_version: project.value.lifecycle_version }, 'delete') }
 const listCache = new Map<string, ProjectItem[]>()
-const reader = shallowRef<ProjectReader | null>(null), loading = ref(false), error = ref('')
+const reader = shallowRef<ProjectReader | null>(props.testReader || null), loading = ref(false), error = ref('')
 const navigationError = ref('')
 let navigationRequest: AbortController | undefined
 const items = ref<ProjectItem[]>([]), listLoading = ref(false), listError = ref(''), listReady = ref(false)
@@ -93,16 +94,35 @@ const activeTab = computed(() => {
   if (dramaTab && dramaTab !== 'list') return tabs.value.find(t => t.key === dramaTab) || tabs.value[0]
   return tabs.value.find(t => t.key === businessKey(project.value?.manifest.category || '', query('tab'), query('kind'))) || tabs.value[0]
 })
-const objectDetail = computed(() => ['item', 'material', 'shot', 'continuity', 'deliverable', 'file', 'fixed', 'run', 'reference', 'candidate', 'lighting', 'package'].some(key => !!dramaParam(key)))
+const objectDetail = computed(() => ['item', 'material', 'setup', 'shot', 'continuity', 'deliverable', 'file', 'fixed', 'run', 'reference', 'candidate', 'lighting', 'package'].some(key => !!dramaParam(key)))
 const shared = computed(() => commonMenus.some(t => t.key === activeTab.value?.key))
 const dramaMaterial = computed(() => drama.value?.globals.find(g => g.key === dramaParam('material')))
+const dramaSetup = computed(() => {
+  const owner = dramaMaterial.value
+  const key = dramaParam('setup')
+  if (!owner || owner.kind !== 'location' || !key) return undefined
+  return owner.setups.find(s => s.key === key && (!dramaParam('state') || s.state_key === dramaParam('state'))) || owner.setups.find(s => s.key === key)
+})
 const dramaState = computed(() => {
   const owner = dramaMaterial.value
   if (!owner) return undefined
   if (dramaParam('lighting')) return owner.states.find(s => s.key === dramaParam('lighting'))
   if (dramaParam('state')) return owner.states.find(s => s.key === dramaParam('state'))
+  if (dramaSetup.value) return owner.states.find(s => s.key === dramaSetup.value?.state_key)
   return owner.states[0]
 })
+const childOwnsHeading = computed(() => Boolean(
+  drama.value &&
+  projectID.value &&
+  !loading.value &&
+  !error.value &&
+  !shared.value &&
+  !dramaParam('lighting') &&
+  dramaMaterial.value?.kind === 'location' &&
+  activeTab.value?.key !== 'script' &&
+  (!dramaParam('state') || Boolean(dramaState.value)) &&
+  (!dramaParam('setup') || Boolean(dramaSetup.value)),
+))
 const dramaKindName = computed(() => ({ script: '剧本正文', character: '人物卡片', wardrobe: '服装造型', prop: '道具', location: '场景', sound: '声音', music: '配乐' }[dramaMaterial.value?.kind || 'character']))
 const dramaEpisode = computed(() => dramaParam('episode') ? drama.value?.episodes.find(ep => ep.key === dramaParam('episode')) : drama.value?.episodes[0])
 const dramaScene = computed(() => dramaEpisode.value?.scenes.find(scene => scene.key === dramaParam('scene')))
@@ -137,6 +157,7 @@ const dramaCrumbs = computed(() => {
     shot: dramaShot.value?.title || continuityShot?.title,
     deliverable: dramaDeliverable.value?.title,
     state: dramaState.value?.name,
+    setup: dramaSetup.value?.label || dramaParam('setup') || undefined,
     version: dramaVersionLabel.value,
     detail: dramaSharedDetail.value,
   }).map(item => ({ label: item.label, to: dramaHref(item.to) }))
@@ -156,6 +177,7 @@ const detail = computed(() => entries.value.find(d => d.key === query('item')))
 const objectTitle = computed(() => dramaParam('file') ? project.value?.manifest.files.find(f => f.file_id === dramaParam('file'))?.path || '文件详情'
   : dramaParam('fixed') ? '固定修订详情' : dramaParam('run') ? '原生运行详情' : dramaParam('reference') ? '固定来源引用' : dramaParam('candidate') ? drama.value?.world_candidates.find(c => c.key === dramaParam('candidate'))?.name || '入库候选'
   : dramaParam('lighting') ? '环境与灯光' : dramaParam('package') ? '交付包'
+  : dramaParam('setup') ? dramaSetup.value?.label || '戏份布景详情'
   : dramaParam('material') ? dramaMaterial.value?.name || '资料详情'
   : dramaParam('shot') ? dramaShot.value?.versions.find(v => v.key === dramaParam('version'))?.label || dramaShot.value?.title || '镜头详情'
   : dramaParam('deliverable') ? dramaDeliverable.value?.title || '成果详情'
@@ -164,6 +186,7 @@ const objectTitle = computed(() => dramaParam('file') ? project.value?.manifest.
   : image.value?.works.find(w => w.key === query('item'))?.title || detail.value?.title)
 const dramaSubtitle = computed(() => {
   if (!drama.value) return ''
+  if (dramaSetup.value) return ['戏份布景', dramaMaterial.value?.name, dramaState.value?.name].filter(Boolean).join(' · ')
   if (dramaMaterial.value) return [dramaKindName.value, dramaState.value?.name, dramaVersionLabel.value ? `版本 ${dramaVersionLabel.value}` : ''].filter(Boolean).join(' · ')
   if (dramaShot.value) return [dramaEpisode.value?.title, dramaScene.value?.title, dramaShot.value.duration_seconds != null ? `${dramaShot.value.duration_seconds} 秒` : '', dramaVersionLabel.value ? `版本 ${dramaVersionLabel.value}` : ''].filter(Boolean).join(' · ')
   if (dramaDeliverable.value) return [dramaDeliverable.value.versions.find(v => v.key === dramaDeliverable.value?.selected_version_key)?.label || '当前选用未整理', dramaDeliverable.value.delivery_record_file_ids.length ? '有交付记录' : '尚未登记实际交付回执', dramaVersionLabel.value ? `版本 ${dramaVersionLabel.value}` : ''].filter(Boolean).join(' · ')
@@ -186,8 +209,8 @@ function link(change: Record<string, string | undefined>) {
   if (drama) return drama
   return { path: '/projects', query: { ...route.query, publish: undefined, publication: undefined, ...change } }
 }
-const listLink = computed(() => link({ fromMusic: undefined, category: project.value?.manifest.category || filter.value, file: undefined, fixed: undefined, run: undefined, reference: undefined, candidate: undefined, lighting: undefined, package: undefined, project: undefined, revision: undefined, tab: undefined, item: undefined, episode: undefined, scene: undefined, shot: undefined, from: undefined, fromRevision: undefined, fromName: undefined, fromItem: undefined, fromReference: undefined, fromCategory: undefined, material: undefined, state: undefined, version: undefined, compare: undefined, deliverable: undefined, kind: undefined, find: undefined, fileType: undefined, status: undefined, view: undefined, purpose: undefined, segment: undefined, continuity: undefined, returnMaterial: undefined }))
-function openProject(item: ProjectItem) { return link({ file: undefined, fixed: undefined, run: undefined, reference: undefined, candidate: undefined, lighting: undefined, package: undefined, project: item.project_id, revision: item.head_revision_id, tab: undefined, item: undefined, episode: undefined, scene: undefined, shot: undefined, material: undefined, state: undefined, version: undefined, compare: undefined, deliverable: undefined, kind: undefined, find: undefined, fileType: undefined, status: undefined, view: undefined, purpose: undefined, segment: undefined, continuity: undefined, returnMaterial: undefined }) }
+const listLink = computed(() => link({ fromMusic: undefined, category: project.value?.manifest.category || filter.value, file: undefined, fixed: undefined, run: undefined, reference: undefined, candidate: undefined, lighting: undefined, package: undefined, project: undefined, revision: undefined, tab: undefined, item: undefined, episode: undefined, scene: undefined, shot: undefined, from: undefined, fromRevision: undefined, fromName: undefined, fromItem: undefined, fromReference: undefined, fromCategory: undefined, material: undefined, state: undefined, setup: undefined, version: undefined, compare: undefined, deliverable: undefined, kind: undefined, find: undefined, fileType: undefined, status: undefined, view: undefined, purpose: undefined, segment: undefined, continuity: undefined, returnMaterial: undefined }))
+function openProject(item: ProjectItem) { return link({ file: undefined, fixed: undefined, run: undefined, reference: undefined, candidate: undefined, lighting: undefined, package: undefined, project: item.project_id, revision: item.head_revision_id, tab: undefined, item: undefined, episode: undefined, scene: undefined, shot: undefined, material: undefined, state: undefined, setup: undefined, version: undefined, compare: undefined, deliverable: undefined, kind: undefined, find: undefined, fileType: undefined, status: undefined, view: undefined, purpose: undefined, segment: undefined, continuity: undefined, returnMaterial: undefined }) }
 async function openWorld(ref: AssetReference) {
   navigationRequest?.abort(); const controller = new AbortController(); navigationRequest = controller; navigationError.value = ''
   try { const target = worldTarget(ref.asset_id, ref.asset_version_id); await appSDK.capabilities.call('navigation.openApp', { appId: target.appId, path: target.path }, { signal: controller.signal }) }
@@ -196,7 +219,7 @@ async function openWorld(ref: AssetReference) {
 const positions = new Map<string, number>()
 const listViews = new Map<string, { q?: string; sort?: string; shown?: string }>()
 const businessViews = new Map<string, Record<string, string>>()
-const businessViewKeys = ['item', 'episode', 'scene', 'shot', 'material', 'state', 'version', 'compare', 'deliverable', 'kind', 'find', 'fileType', 'status', 'view', 'purpose', 'segment', 'continuity', 'returnMaterial', 'file', 'fixed', 'run', 'reference', 'candidate', 'lighting', 'package']
+const businessViewKeys = ['item', 'episode', 'scene', 'shot', 'material', 'state', 'setup', 'version', 'compare', 'deliverable', 'kind', 'find', 'fileType', 'status', 'view', 'purpose', 'segment', 'continuity', 'returnMaterial', 'file', 'fixed', 'run', 'reference', 'candidate', 'lighting', 'package']
 function businessViewKey(project: string, revision: string, tab: string) { return JSON.stringify([project, revision, tab]) }
 function menuLink(tab: string) {
   if (dramaLocation.value) return link({ ...Object.fromEntries(businessViewKeys.map(key => [key, undefined])), tab })
@@ -253,6 +276,7 @@ async function loadList() {
   finally { if (alive && current === listRequest) { listLoading.value = false; void restoreScroll() } }
 }
 async function loadProject() {
+  if (props.testReader) { reader.value = props.testReader; return }
   const current = ++request
   reader.value?.dispose(); reader.value = null; error.value = ''; loading.value = false; editRecovery.value = false
   if (signedOut) return
@@ -361,7 +385,7 @@ onBeforeUnmount(() => { closeEdit(); alive = false; request++; listRequest++; na
         </template>
       </nav>
       <ProjectLifecycleDialog ref="lifecycleDialog" @changed="lifecycleChanged" />
-      <header class="heading">
+      <header v-if="!childOwnsHeading" class="heading">
         <div class="heading-left"><h1>{{ projectID ? (objectTitle || project?.manifest.name || '项目') : listCategory.label }}</h1><p v-if="drama" class="tabular-nums">{{ dramaSubtitle }}</p><p v-else-if="image && content?.overview" class="image-overview">{{ content.overview }}</p><p v-else-if="!projectID">{{ listCategory.description }}</p></div>
         <details v-if="project?.manifest.category === 'image'" class="image-management" @click="closeImageMenu" @keydown.esc="closeImageMenu"><summary>项目操作</summary><div class="image-management-menu"><button v-if="project.can_write && !historical" @click="editCurrent('rename')">重命名</button><button v-if="project.can_write && !historical" @click="editCurrent('cover')">修改封面</button><RouterLink :to="{ path: '/workspace', query: { project: projectID } }">本机工作副本</RouterLink><button :disabled="loading" @click="retry">刷新</button><button v-if="project.can_delete && !historical" @click="deleteCurrent">删除项目</button></div></details>
         <details v-else-if="drama && projectID && dramaLocation?.tab === 'overview'" class="image-management"><summary>更多</summary><div class="image-management-menu"><button v-if="project?.can_write && !historical" @click="editCurrent('rename')">重命名</button><button v-if="project?.can_write && !historical" @click="editCurrent('cover')">修改封面</button><RouterLink :to="{ path: '/workspace', query: { project: projectID } }">本机工作副本</RouterLink><button :disabled="loading" @click="retry">刷新</button><button v-if="project?.can_delete && !historical" @click="deleteCurrent">删除项目</button></div></details>

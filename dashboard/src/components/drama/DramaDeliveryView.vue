@@ -24,7 +24,7 @@ const candidates = computed(() => drama.value.world_candidates.filter(c => deliv
 <template>
   <template v-if="q('deliverable') && q('version') && !q('package')">
     <template v-if="delivery && delivery.versions.some(v => v.key === q('version'))">
-      <h2>{{ delivery.title }} · 成果版本</h2>
+      <p class="muted">成果版本 · {{ delivery.title }}</p>
       <DramaVersions fixed :reader="reader" :versions="delivery.versions" :selected-key="delivery.selected_version_key" />
       <section class="panel">
         <h2>实际交付回执</h2>
@@ -38,7 +38,6 @@ const candidates = computed(() => drama.value.world_candidates.filter(c => deliv
 
   <template v-else-if="q('package')">
     <section v-if="delivery && q('package') === delivery.key" class="panel">
-      <h2>{{ delivery.title }} · 交付包</h2>
       <p class="muted">固定成果版本与实际交付回执分别核对。</p>
       <DramaVersions :reader="reader" :versions="delivery.versions" :selected-key="delivery.selected_version_key" />
       <h3>实际交付记录</h3>
@@ -72,7 +71,6 @@ const candidates = computed(() => drama.value.world_candidates.filter(c => deliv
   </template>
 
   <template v-else>
-    <h2>成果与交付</h2>
     <p class="muted">成片、工程与交付包各自固定版本；新候选不会改变历史成片。</p>
     <div class="material-grid">
       <RouterLink v-for="d in drama.deliverables" :key="d.key" class="production-card" :to="link({ deliverable: d.key, version: undefined, compare: undefined })">

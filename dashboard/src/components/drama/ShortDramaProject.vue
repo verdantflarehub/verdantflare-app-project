@@ -259,15 +259,6 @@ const target = computed(() => [props.tab, q('material'), q('state'), q('setup'),
       />
 
       <template v-else-if="tab === 'materials' || tab === 'script'">
-        <header class="section-head">
-          <div>
-            <span class="muted">{{ tab === 'materials' ? '项目共用素材' : '剧本与配套设定' }}</span>
-            <h2>{{ activeName }}</h2>
-            <RouterLink v-if="activeKind === 'location'" class="related-link" :to="link({ tab: 'production', view: 'spaces', kind: undefined })">查看白模与灯光设计 →</RouterLink>
-          </div>
-          <span v-if="activeKind !== 'script' && activeKind !== 'continuity'" class="muted">{{ filtered.length }} 项</span>
-        </header>
-
         <template v-if="tab === 'script' && activeKind === 'script'">
           <nav v-if="!q('scene')" class="episode-tabs" aria-label="分集">
             <RouterLink v-for="(e, i) in drama.episodes" :key="e.key" :class="{ active: e.key === episode?.key }" :to="link({ episode: e.key, scene: undefined, shot: undefined })">第 {{ i + 1 }} 集</RouterLink>
@@ -319,16 +310,18 @@ const target = computed(() => [props.tab, q('material'), q('state'), q('setup'),
         </template>
 
         <template v-else>
-          <div class="material-toolbar">
+          <div class="material-toolbar" role="toolbar" :aria-label="`${activeName}工具栏`">
             <form v-if="!q('continuity')" class="search" @submit.prevent="search">
               <input v-model="searchDraft" type="search" aria-label="搜索当前内容" placeholder="搜索名称或设定">
-              <button class="btn" type="submit">搜索</button>
+              <button class="btn toolbar-btn" type="submit">搜索</button>
             </form>
-            <select v-if="tab === 'materials'" aria-label="素材筛选" :value="q('status') || 'all'" @change="router.replace(link({ status: ($event.target as HTMLSelectElement).value }))">
+            <select v-if="tab === 'materials'" class="toolbar-select" aria-label="素材筛选" :value="q('status') || 'all'" @change="router.replace(link({ status: ($event.target as HTMLSelectElement).value }))">
               <option value="all">全部素材</option>
               <option value="ready">已有候选或成果</option>
               <option value="missing">待制作</option>
             </select>
+            <span v-if="activeKind !== 'script' && activeKind !== 'continuity'" class="muted toolbar-count tabular-nums">共 {{ filtered.length }} 项</span>
+            <RouterLink v-if="activeKind === 'location'" class="btn toolbar-btn toolbar-spaces-link" :to="link({ tab: 'production', view: 'spaces', kind: undefined })">场景白模与灯光 →</RouterLink>
           </div>
 
           <template v-if="activeKind === 'continuity'">
@@ -417,7 +410,7 @@ const target = computed(() => [props.tab, q('material'), q('state'), q('setup'),
 </template>
 
 <style scoped>
-.material-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:18px 0}.material-toolbar label{display:grid;gap:6px;font-size:12px;color:var(--muted)}.material-toolbar select{max-width:100%}.material-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;align-items:stretch}.material-grid.kind-location{grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}.material-card{display:flex;flex-direction:column;background:var(--shell-panel);border:1px solid var(--line);border-radius:8px;overflow:hidden;min-width:0;height:100%}.material-card:hover{border-color:var(--accent)}.material-card .media-thumb{width:100%;aspect-ratio:3/4;height:auto;display:flex;align-items:center;justify-content:center;background:var(--subtle);padding:0;position:relative;overflow:hidden}.material-grid.kind-location .material-card .media-thumb{aspect-ratio:16/10}.material-copy{padding:14px 16px;display:flex;flex-direction:column;flex:1;min-width:0}.material-copy .muted{font-size:12px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.material-copy h3{font-size:16px;margin:6px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.material-copy .preview-status{font-size:12px;color:var(--muted);line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.material-copy p{font-size:13px;color:var(--muted);margin:6px 0 10px;line-height:1.6;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.material-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 16px}.material-toolbar label{display:grid;gap:6px;font-size:12px;color:var(--muted)}.material-toolbar select,.toolbar-select{height:36px;padding:0 12px;border:0.5px solid var(--vf-hairline-outer,var(--line));border-radius:8px;background:var(--panel);color:var(--ink);box-shadow:var(--vf-shadow-card);max-width:100%}.toolbar-btn{height:36px;padding:0 14px;white-space:nowrap}.toolbar-count{padding:0 4px;white-space:nowrap}.toolbar-spaces-link{margin-left:auto}.material-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;align-items:stretch}.material-grid.kind-location{grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}.material-card{display:flex;flex-direction:column;background:var(--shell-panel);border:1px solid var(--line);border-radius:8px;overflow:hidden;min-width:0;height:100%}.material-card:hover{border-color:var(--accent)}.material-card .media-thumb{width:100%;aspect-ratio:3/4;height:auto;display:flex;align-items:center;justify-content:center;background:var(--subtle);padding:0;position:relative;overflow:hidden}.material-grid.kind-location .material-card .media-thumb{aspect-ratio:16/10}.material-copy{padding:14px 16px;display:flex;flex-direction:column;flex:1;min-width:0}.material-copy .muted{font-size:12px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.material-copy h3{font-size:16px;margin:6px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.material-copy .preview-status{font-size:12px;color:var(--muted);line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.material-copy p{font-size:13px;color:var(--muted);margin:6px 0 10px;line-height:1.6;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 .material-empty-icon{font-size:36px;color:var(--muted);display:grid;place-items:center;width:100%;height:100%;background:var(--subtle)}.material-card .read-more{display:block;margin-top:12px}
 .location-card-badges{position:absolute;left:10px;right:10px;bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:8px;pointer-events:none;z-index:2}
 .loc-badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:500;line-height:1.3;background:var(--shell-panel);color:var(--ink);border:1px solid var(--line)}
@@ -442,7 +435,7 @@ h2 { font-size:18px; line-height:1.35; margin:0 0 10px; }.panel h2 { font-size:1
 .setting-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
 .setting-card { border:1px solid var(--line); border-radius:7px; background:var(--shell-panel); min-width:0; }.setting-card .material-copy { padding:22px; }.setting-card h3 { font-size:18px; margin:12px 0; }.setting-card p { -webkit-line-clamp:4; }
 .setting-card:hover { border-color:var(--accent); }
-.search { display:flex; gap:8px; flex:1; min-width:180px; }.search input { flex:1; min-width:0; }.search .btn { white-space:nowrap; }
+.search { display:flex; gap:8px; flex:1 1 220px; min-width:180px; align-items:center; }.search input { flex:1; min-width:0; height:36px; padding:0 12px; }.search .btn { white-space:nowrap; height:36px; }
 .episode-tabs,.scene-links { display:flex; gap:8px; flex-wrap:wrap; }.episode-tabs { margin:18px 0; }.episode-tabs a { border:1px solid var(--line); padding:7px 12px; border-radius:5px; font-size:12px; color:var(--muted); }.episode-tabs a.active { border-color:var(--accent); color:var(--accent); background:transparent; }
 .related-link { display:block; color:var(--accent); font-size:13px; line-height:1.7; padding:6px 0; }.scene-links { margin-top:18px; gap:12px; }.scene-links a { color:var(--accent); font-size:12px; }
 .empty { color:var(--muted); padding:0; border:0; font-size:13px; line-height:1.8; }

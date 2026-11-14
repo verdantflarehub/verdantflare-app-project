@@ -13,7 +13,7 @@ const { createSSRApp, h } = require('vue')
 const { renderToString } = require('vue/server-renderer')
 const { createMemoryHistory, createRouter } = require('vue-router')
 const context = { userId: 'test-user', organizationId: 'test-org', stationId: 'test-station', appId: 'project', installationId: 'test-installation', contextRevision: 1 }
-const host = { appSDK: { context: { get: () => context, subscribe: () => () => {} }, lifecycle: { subscribe: () => () => {} } }, dashboardHost: { setDirty() {} } }
+const host = { appSDK: { context: { get: () => context, subscribe: () => () => {} }, lifecycle: { subscribe: () => () => {} } }, dashboardHost: { setDirty() {}, getScroll: () => 0, restoreScroll() {} } }
 
 export function renderer() {
   const cache = new Map<string, any>(), styles = new Map<string, string>()

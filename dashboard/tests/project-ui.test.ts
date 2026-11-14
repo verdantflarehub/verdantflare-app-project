@@ -348,3 +348,127 @@ test('drama production view renders 16:9 storyboard wall, 4-tier camera previs f
   assert.match(locListHtml, /href="\/ai_short_drama"[^>]*>短剧制作<\/a>/)
   assert.doesNotMatch(locListHtml, />剧本<\/a>|<span>\/<\/span><a[^>]*>素材<\/a>|version=whitebox_v5/)
 })
+
+test('location and setup details enforce single h1 ownership, 7-level setup breadcrumbs, single-state tab collapse, adaptive empty-set showcase and collapsed spec drawers', async () => {
+  const render = renderer(), reader = dramaReader(), drama = reader.content.ai_short_drama!
+  const location = drama.globals.find(g => g.kind === 'location')!
+  assert(location)
+  location.description = '聚贤庄前广场与正厅相连，青石地面配木构门楼，供群雄集会与比武调度。'
+
+  const contentRef = reader.project.manifest.files[0].content_ref
+  reader.project.manifest.files.push(
+    { file_id: id(30), path: 'sets/juxianzhuang/set.json', content_ref: contentRef },
+    { file_id: id(31), path: 'sets/juxianzhuang/scene.glb', content_ref: contentRef },
+    { file_id: id(32), path: 'sets/juxianzhuang/preview.png', content_ref: contentRef },
+    { file_id: id(33), path: 'docs/juxianzhuang-spec.md', content_ref: contentRef },
+  )
+
+  location.states = [{
+    key: 'day_full',
+    name: '白昼·完整片场',
+    definition_refs: [{ file_id: id(33), content_ref: contentRef, anchor: 'spec' }],
+    marks: [],
+  }]
+  location.setups = []
+  location.versions = [{
+    key: 'whitebox_v1',
+    label: 'v1 完整片场白模',
+    state_key: 'day_full',
+    purpose: 'whitebox',
+    segment_key: null,
+    basis_revision_id: id(2),
+    parent_version_key: null,
+    change_note: '主轴院落白模',
+    file_refs: [
+      { file_id: id(30), purpose: 'project', content_ref: contentRef },
+      { file_id: id(31), purpose: 'project', content_ref: contentRef },
+      { file_id: id(32), purpose: 'preview', content_ref: contentRef },
+    ],
+    generation_record_file_ids: [],
+    review: { state: 'unreviewed', record_file_id: null },
+  }]
+  location.selected_versions = [{ purpose: 'whitebox', state_key: 'day_full', version_key: 'whitebox_v1' }]
+
+  const fullReader = {
+    ...reader,
+    file: (fileId: string) => reader.project.manifest.files.find(f => f.file_id === fileId),
+    thumbnail: async () => 'blob:location-thumb',
+    media: async () => 'blob:location-media',
+  }
+
+  // 1. Single-state + 0 setups on full ProjectBrowser hierarchy
+  const emptySetHtml = await render.render(
+    'pages/ProjectBrowser.vue',
+    { testReader: fullReader as never },
+    `/ai_short_drama/${id(1)}/materials/location/${location.key}/day_full`,
+  )
+  assert.equal((emptySetHtml.match(/<h1\b/g) || []).length, 1, 'must render strictly one h1 across ProjectBrowser + ShortDramaProject + DramaMaterialDetail')
+  assert.match(emptySetHtml, new RegExp(`<h1[^>]*>\\s*${location.name}\\s*<\\/h1>`))
+  assert.doesNotMatch(emptySetHtml, /data-testid="location-state-tabs"/, 'single state must auto-collapse state tabs')
+  assert.match(emptySetHtml, /data-testid="empty-set-showcase"/)
+  assert.match(emptySetHtml, /data-testid="location-spec-panel"/)
+  assert.doesNotMatch(emptySetHtml, /\bclass="set-layer-grid\b/)
+  assert.match(emptySetHtml, /data-testid="location-download-package"/)
+  assert.match(emptySetHtml, /下载片场包/)
+  assert.doesNotMatch(emptySetHtml, /准备下载片场包/)
+  assert.doesNotMatch(emptySetHtml, /globals\[kind=location\]|setups\[\]|污损或破损标记/)
+  assert.equal(emptySetHtml.split(location.description).length - 1, 1, 'material.description must appear once without duplication')
+  assert.match(emptySetHtml, /aria-expanded="false"[^>]*>[\s\S]*?场景状态与空间规范 · spec/)
+  assert.doesNotMatch(emptySetHtml, /document-reader-box/, 'engineering spec drawer must stay collapsed by default')
+
+  // 2. Multi-state + setups renders state tabs and 16:9 setup card grid, and setup detail renders 7-level breadcrumbs + single h1
+  location.states.push({ key: 'night_battle', name: '夜战·火把通明', definition_refs: [], marks: [] })
+  location.setups = [{
+    key: 's03_whip',
+    label: 'S03 · 广场比武',
+    state_key: 'day_full',
+    description: '广场中轴摆设兵器架与酒坛，封锁后厅通道。',
+    scene_refs: [],
+    set_package_id: null,
+    poster_file_id: id(32),
+    primary_camera_key: 'C1',
+    camera_keys: ['C1', 'C2'],
+    cast: [],
+    review: { state: 'unreviewed', record_file_id: null },
+  }]
+
+  const multiSetHtml = await render.render(
+    'pages/ProjectBrowser.vue',
+    { testReader: fullReader as never },
+    `/ai_short_drama/${id(1)}/materials/location/${location.key}/day_full`,
+  )
+  assert.equal((multiSetHtml.match(/<h1\b/g) || []).length, 1)
+  assert.match(multiSetHtml, /data-testid="location-state-tabs"/)
+  assert.match(multiSetHtml, /\bclass="set-layer-grid\b/)
+  assert.match(multiSetHtml, /data-testid="setup-card-s03_whip"/)
+  assert.doesNotMatch(multiSetHtml, /data-testid="empty-set-showcase"/)
+
+  const setupDetailHtml = await render.render(
+    'pages/ProjectBrowser.vue',
+    { testReader: fullReader as never },
+    `/ai_short_drama/${id(1)}/materials/location/${location.key}/day_full/setups/s03_whip`,
+  )
+  assert.equal((setupDetailHtml.match(/<h1\b/g) || []).length, 1)
+  assert.match(setupDetailHtml, /<h1[^>]*>\s*S03 · 广场比武\s*<\/h1>/)
+  for (const crumb of ['项目管理', '短剧制作', '短剧页面测试', '场景', location.name, '白昼·完整片场', 'S03 · 广场比武']) {
+    assert(setupDetailHtml.includes(crumb), `expected 7-level setup breadcrumb segment: ${crumb}`)
+  }
+
+  // 3. Category list views do not duplicate h2 section headings under ProjectBrowser h1
+  const categoryListHtml = await render.render(
+    'pages/ProjectBrowser.vue',
+    { testReader: fullReader as never },
+    `/ai_short_drama/${id(1)}/materials/location`,
+  )
+  assert.equal((categoryListHtml.match(/<h1\b/g) || []).length, 1)
+  assert.match(categoryListHtml, /场景白模与灯光 →/)
+  assert.doesNotMatch(categoryListHtml, /<h2[^>]*>\s*场景\s*<\/h2>|项目共用素材/)
+
+  const deliveryListHtml = await render.render(
+    'pages/ProjectBrowser.vue',
+    { testReader: fullReader as never },
+    `/ai_short_drama/${id(1)}/delivery`,
+  )
+  assert.equal((deliveryListHtml.match(/<h1\b/g) || []).length, 1)
+  assert.doesNotMatch(deliveryListHtml, /<h2[^>]*>\s*成果与交付\s*<\/h2>/)
+})

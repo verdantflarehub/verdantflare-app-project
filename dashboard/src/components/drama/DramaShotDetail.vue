@@ -77,7 +77,7 @@ function usageMaterial(u: DramaUsage) {
 <template>
   <template v-if="q('shot') && q('version')">
     <template v-if="shot && shot.versions.some(v => v.key === q('version'))">
-      <h2>{{ shot.title }} · 镜头制作版本</h2>
+      <p class="muted">镜头制作版本 · {{ shot.title }}</p>
       <DramaVersions fixed :reader="reader" :versions="shot.versions" :selections="shot.selected_versions" />
       <section class="panel">
         <h2>固定制作依据</h2>
