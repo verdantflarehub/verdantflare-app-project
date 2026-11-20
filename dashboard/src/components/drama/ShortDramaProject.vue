@@ -373,7 +373,7 @@ const target = computed(() => [props.tab, q('material'), q('state'), q('setup'),
               :to="link({ material: g.key, kind: g.kind, returnMaterial: undefined, state: tab === 'materials' ? (materialPreview(g).version?.state_key || g.states[0]?.key) : undefined, setup: undefined, version: undefined, compare: undefined })"
             >
               <div v-if="tab === 'materials'" class="media-thumb">
-                <ProjectMedia v-if="materialPreview(g).fileId" :reader="reader" :file-id="materialPreview(g).fileId" kind="image" :label="g.name" thumbnail />
+                <ProjectMedia v-if="materialPreview(g).fileId" :reader="reader" :file-id="materialPreview(g).fileId" kind="image" :label="g.name" thumbnail :edge="640" />
                 <span v-else class="material-empty-icon">{{ ({ character: '人', wardrobe: '衣', prop: '物', location: '景', sound: '♪', music: '♫' } as Record<string, string>)[g.kind] }}</span>
                 <div v-if="g.kind === 'location'" class="location-card-badges" data-testid="location-card-badges">
                   <span class="loc-badge source" :class="{ world: Boolean(g.asset_id) }" data-testid="location-source-badge">

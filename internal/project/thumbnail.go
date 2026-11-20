@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"github.com/verdantflarehub/verdantflare-app-project/internal/contentcache"
 	"image"
-	"image/draw"
 	"image/gif"
 	"image/jpeg"
 	"image/png"
@@ -20,6 +19,7 @@ import (
 	"time"
 
 	"github.com/HugoSmits86/nativewebp"
+	"golang.org/x/image/draw"
 	"golang.org/x/image/webp"
 )
 
@@ -103,7 +103,11 @@ func (s *Service) Thumbnail(ctx context.Context, p Principal, r ThumbnailRequest
 	if meta.Size > max {
 		return ThumbnailResult{}, ErrTooLarge
 	}
-	identity, _ := json.Marshal([]any{p.OrganizationID, meta.SHA256, r.Edge, r.Preview, "webp-v1"})
+	derivedVersion := "webp-v2"
+	if poster {
+		derivedVersion = "webp-v1"
+	}
+	identity, _ := json.Marshal([]any{p.OrganizationID, meta.SHA256, r.Edge, r.Preview, derivedVersion})
 	encoded, err := s.derivedCache().Get(ctx, "derived:"+string(identity), 4<<20, func() ([]byte, error) {
 		if !allowThumbnail(p.OrganizationID + "/" + p.SubjectID) {
 			return nil, ErrRateLimited
@@ -199,7 +203,7 @@ func scaleLongEdge(src image.Image, edge int) image.Image {
 		long = h
 	}
 	if long <= edge || long == 0 {
-		edge = long
+		return src
 	}
 	nw, nh := w*edge/long, h*edge/long
 	if nw < 1 {
@@ -212,12 +216,7 @@ func scaleLongEdge(src image.Image, edge int) image.Image {
 		return src
 	}
 	dst := image.NewNRGBA(image.Rect(0, 0, nw, nh))
-	for y := 0; y < nh; y++ {
-		sy := b.Min.Y + y*h/nh
-		for x := 0; x < nw; x++ {
-			dst.Set(x, y, src.At(b.Min.X+x*w/nw, sy))
-		}
-	}
+	draw.CatmullRom.Scale(dst, dst.Bounds(), src, b, draw.Src, nil)
 	return dst
 }
 

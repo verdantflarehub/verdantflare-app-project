@@ -18,7 +18,7 @@ export function readerError(error: unknown): string {
 export function controlledContentPath(path: string): string {
   const fail = (): never => { throw new Error('媒体读取地址与当前项目不匹配。') }
   const uuid4 = '[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}'
-  if (!new RegExp(`^/studio/dashboards/${uuid4}/content/${uuid4}$`).test(path) && !/^\/studio\/media\/[a-f0-9]{64}\/[a-f0-9]{64}\/(?:original-v1|thumbnail-(?:320|640)-v1|poster-(?:320|640)-v1)$/.test(path)) fail()
+  if (!new RegExp(`^/studio/dashboards/${uuid4}/content/${uuid4}$`).test(path) && !/^\/studio\/media\/[a-f0-9]{64}\/[a-f0-9]{64}\/(?:original-v1|thumbnail-(?:320|640)-v(?:1|2)|poster-(?:320|640)-v1)$/.test(path)) fail()
   const url = new URL(path, location.origin)
   if (url.origin !== location.origin || url.pathname !== path || url.search || url.hash) fail()
   return url.pathname
@@ -130,8 +130,9 @@ export class ProjectReader {
     const file = this.file(id), cacheKey = `${id}:${kind}:${edge}`
     if (!this.thumbnails.has(cacheKey)) {
       const promise = this.reads.run(async () => {
-        const dl = await fixedMedia<Download>([this.projectID, file.content_ref, `${kind}-${edge}-v1`], () => callTool<Download>('artifact.read', {
-          mode: 'download', content_ref: file.content_ref, access: this.access(), representation: `${kind}-${edge}-v1`,
+        const representation = `${kind}-${edge}-${kind === 'thumbnail' ? 'v2' : 'v1'}`
+        const dl = await fixedMedia<Download>([this.projectID, file.content_ref, representation], () => callTool<Download>('artifact.read', {
+          mode: 'download', content_ref: file.content_ref, access: this.access(), representation,
         }, this.projectID))
         this.validateDescriptor(dl, file.content_ref)
         if (!eligible()) throw new DOMException('素材已离开可视范围。', 'AbortError')

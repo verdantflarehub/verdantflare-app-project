@@ -87,7 +87,7 @@ function castLink(cast: Cast) {
         <div v-if="video.cast.some(cast => cast.role === role.key)" class="short-video-cast-grid">
           <article v-for="cast in video.cast.filter(cast => cast.role === role.key)" :key="cast.key" class="short-video-cast-card">
             <RouterLink :to="{ path: route.path, query: { ...route.query, tab: 'cast', item: cast.key } }" class="short-video-cast-link">
-              <ProjectMedia :reader="reader" :file-id="cast.portrait_file_id" kind="image" :label="cast.name" thumbnail /><strong>{{ cast.name }}</strong>
+              <ProjectMedia :reader="reader" :file-id="cast.portrait_file_id" kind="image" :label="cast.name" thumbnail :edge="640" /><strong>{{ cast.name }}</strong>
             </RouterLink>
             <p class="cast-role">本片角色：{{ role.label }}</p>
           </article>
@@ -120,7 +120,7 @@ function castLink(cast: Cast) {
         <ol v-if="video.storyboards.length" class="short-video-board-grid">
           <li v-for="(entry, index) in video.storyboards" :key="entry.key">
             <RouterLink class="short-video-board" :to="boardLink(entry.key)">
-              <ProjectMedia :reader="reader" :file-id="entry.image_file_id" kind="image" :label="entry.title" thumbnail />
+              <ProjectMedia :reader="reader" :file-id="entry.image_file_id" kind="image" :label="entry.title" thumbnail :edge="640" />
               <div class="short-video-board-caption"><small>{{ String(index + 1).padStart(2, '0') }}</small><h3>{{ entry.title }}</h3><small>{{ duration(entry.duration_seconds) }}</small></div>
             </RouterLink>
           </li>

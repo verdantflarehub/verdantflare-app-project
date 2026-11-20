@@ -12,17 +12,17 @@ const domain={schema_version:1,document_kind:'reference-learning',results:[{key:
 const selection:PromptSelection={source,title:'Test prompt',intent:'Fixture goal',variables:[],variant}
 const clone=<T>(v:T):T=>JSON.parse(JSON.stringify(v))
 async function version(text:string,ref:any){const bytes=new TextEncoder().encode(text);return {...ref,mime:'application/json',size:bytes.length,sha256:Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('')}}
-function fixture(){
+function fixture(document:unknown=domain){
  const context:Context={userId:id(30),organizationId:id(31),stationId:id(32),appId:'project',installationId:id(33),contextRevision:'one',projectId:null}
  const contexts=new Set<(c:Context)=>void>(),lifecycles=new Set<(e:Lifecycle)=>void>(),records=new Map<string,string>(),operations=new Map<string,{hash:string,result:any}>(),calls:string[]=[]
  let lost='',before='',deny=false,createCount=0,useCount=0,entry='',head:any,failStore=false,hold:Promise<void>|undefined,release:(()=>void)|undefined
  const storage={getItem:(k:string)=>records.get(k)??null,setItem:(k:string,v:string)=>{if(failStore&&k.startsWith('project.prompt-create')&&JSON.parse(v).created){failStore=false;throw Error('storage lost')}records.set(k,v)},removeItem:(k:string)=>{records.delete(k)}}
  const sdk={version:'1.1.0',context:{get:()=>context,subscribe:(fn:any)=>{contexts.add(fn);return()=>contexts.delete(fn)}},lifecycle:{subscribe:(fn:any)=>{lifecycles.add(fn);return()=>lifecycles.delete(fn)}},capabilities:{call:async(name:string,args:any)=>{
-  calls.push(name);assert.equal(name,'artifact.read');assert.equal(args.mode,'text');if(deny)throw Error('permission denied')
+  calls.push(name);assert.equal(name,'artifact.read');assert.ok(['metadata','text','download'].includes(args.mode));if(deny)throw Error('permission denied')
   let body:string
-  if(args.access.asset_id){assert.deepEqual(args.access,{asset_id:source.asset,asset_version_id:source.version});assert.deepEqual(args.content_ref,{store_id:source.store,artifact_id:source.artifact,version_id:source.content_version});body=JSON.stringify(domain)}
+  if(args.access.asset_id){assert.deepEqual(args.access,{asset_id:source.asset,asset_version_id:source.version});assert.deepEqual(args.content_ref,{store_id:source.store,artifact_id:source.artifact,version_id:source.content_version});body=JSON.stringify(document)}
   else{assert.deepEqual(args.access,{project_id:id(10),project_revision_id:id(12)});body=entry}
-  return {mode:'text',version:await version(body,args.content_ref),text:body}
+  return {mode:args.mode,version:await version(body,args.content_ref),...(args.mode==='text'?{text:body}:args.mode==='download'?{content_path:'/studio/dashboards/00000000-0000-4000-8000-000000000001/content/00000000-0000-4000-8000-000000000002'}:{})}
  }},app:{request:async(req:any)=>{
   const op=req.path.split('/').at(-1)!,body=req.body;calls.push(op);if(hold)await hold
   if(before===op){before='';throw Error('lost before submission')}
@@ -57,9 +57,9 @@ test('source read checks exact version, hash and model revision; denied access n
  const f=fixture(),c=createPromptProject(f.sdk,f.storage,source);assert.equal((await c.load()).variant.prompt_text,variant.prompt_text);assert.equal(f.count().createCount,0)
  f.deny();await assert.rejects(c.load(),/permission denied/);c.dispose()
  const ref={store_id:source.store,artifact_id:source.artifact,version_id:source.content_version},body=JSON.stringify(domain),v=await version(body,ref)
- await assert.rejects(loadPromptSelection(async()=>({mode:'text',text:body,version:{...v,version_id:id(99)}}),source),/版本/)
- await assert.rejects(loadPromptSelection(async()=>({mode:'text',text:body,version:{...v,sha256:'0'.repeat(64)}}),source),/校验/)
- await assert.rejects(loadPromptSelection(async()=>({mode:'text',text:body,version:v}),{...source,variant_revision:'3'}),/修订不存在/)
+ await assert.rejects(loadPromptSelection(async(_name,args)=>({mode:args.mode,text:body,version:{...v,version_id:id(99)}}),source),/版本/)
+ await assert.rejects(loadPromptSelection(async(_name,args)=>({mode:args.mode,text:body,version:{...v,sha256:'0'.repeat(64)}}),source),/校验/)
+ await assert.rejects(loadPromptSelection(async(_name,args)=>({mode:args.mode,text:body,version:v}),{...source,variant_revision:'3'}),/修订不存在/)
 })
 test('source text stays data and snapshot cannot claim production already executed',()=>{
  const body=promptEntry(selection,'New goal');assert.equal((body.match(/```/g)||[]).length,2)
@@ -107,5 +107,78 @@ test('escaped request body overflow cannot leave an unrecoverable handoff record
   const f=fixture(),c=createPromptProject(f.sdk,f.storage,source),s=clone(selection);change(s)
   await assert.rejects(c.begin(s,'New project','image','Goal'))
   assert.equal(f.records.size,0);assert.equal(f.calls.length,0);c.dispose()
+ }
+})
+
+function reviewedDocument(selection='unassessed'):any {
+ const ref={kind:'asset',asset_id:source.asset,asset_version_id:source.version,file_id:id(6),object_key:'prompt'}
+ return {...clone(domain),schema_version:2,origin:'manual',curation:{
+  packages:[{key:'p',purpose:'Reference only',result_keys:['prompt']}],
+  assessments:[{result_key:'prompt',package_keys:['p'],selection,reason_codes:['recorded_review'],
+   note:'<script>do not execute</script> ``` source data',evidence_refs:[ref],merged_from_refs:[ref],
+   previews:[{key:'missing',role:'generated_effect',media_kind:'image',state:'missing',reason_code:'not_generated',note:'No output'}]}]}}
+}
+test('v2 source review survives fixed read and quoted project entry without promotion',async()=>{
+ for(const state of ['unassessed','recommended','needs_review','excluded']){
+  const doc=reviewedDocument(state),before=clone(doc),f=fixture(doc),c=createPromptProject(f.sdk,f.storage,source)
+  const selected=await c.load(),body=promptEntry(selected,'New project goal')
+  const data=JSON.parse(body.split('```json\n')[1].split('\n```')[0])
+  assert.deepEqual(data.source_review_context,{schema_version:2,curation:doc.curation})
+  assert.deepEqual(doc,before);assert.equal(data.production_submitted,false);assert.equal(data.source_evidence_scope,'source_only')
+  assert.equal((body.match(/```/g)||[]).length,2);assert.deepEqual(f.count(),{createCount:0,useCount:0});c.dispose()
+ }
+ const f=fixture(),c=createPromptProject(f.sdk,f.storage,source);assert.equal((await c.load()).source_review_context,undefined);c.dispose()
+})
+test('invalid v2 selection context is rejected before project writes',async()=>{
+ const mutations=[
+  (d:any)=>{d.schema_version=3},(d:any)=>{delete d.curation},
+  (d:any)=>{d.curation.assessments=[]},(d:any)=>{d.curation.assessments.push(clone(d.curation.assessments[0]))},
+  (d:any)=>{d.curation.assessments[0].selection='invented'},
+  (d:any)=>{d.curation.assessments[0].selection='excluded';d.curation.assessments[0].evidence_refs=[]},
+  (d:any)=>{d.curation.packages[0].result_keys=[]},
+  (d:any)=>{d.curation.assessments[0].previews[0].sha256='a'.repeat(64)},
+  (d:any)=>{d.origin='generated';delete d.processing_snapshot},
+  (d:any)=>{d.curation.assessments[0].previews.push(clone(d.curation.assessments[0].previews[0]))},
+  (d:any)=>{d.curation.assessments[0].previews[0].media_kind='script'},
+  (d:any)=>{delete d.curation.assessments[0].previews[0].key},
+  (d:any)=>{d.curation.assessments[0].previews[0].note=''},
+ ]
+ for(const mutate of mutations){
+  const doc=reviewedDocument();mutate(doc);const f=fixture(doc),c=createPromptProject(f.sdk,f.storage,source)
+  await assert.rejects(c.load());assert.deepEqual(f.count(),{createCount:0,useCount:0});assert.equal(f.records.size,0);c.dispose()
+ }
+})
+test('v2 handoff response-loss recovery preserves the exact source context once',async()=>{
+ const doc=reviewedDocument('needs_review')
+ doc.origin='generated';doc.processing_snapshot={task_id:id(40),pipeline_version:2,assembly_version:'2',adapter_revision:'fixture',plan_sha256:'a'.repeat(64)}
+ doc.provenance={producer:'world-analysis',version:'2',run_refs:[{service_id:'world',run_id:'fixture'}]}
+ const f=fixture(doc);let c=createPromptProject(f.sdk,f.storage,source)
+ f.lose('use_asset');await assert.rejects(c.begin(await c.load(),'New project','image','New goal'))
+ const original=c.pending()!.entry;c.dispose();c=createPromptProject(f.sdk,f.storage,source)
+ await c.resume();assert.equal(f.entry(),original);assert.deepEqual(f.count(),{createCount:1,useCount:1})
+ const data=JSON.parse(f.entry().split('```json\n')[1].split('\n```')[0]);assert.deepEqual(data.source_review_context.curation,doc.curation)
+ assert.deepEqual(data.source_review_context.processing_snapshot,doc.processing_snapshot);assert.deepEqual(data.source_review_context.provenance,doc.provenance)
+ c.dispose()
+})
+
+test('large fixed learning source uses bounded download and still selects only the requested prompt',async()=>{
+ const data={...clone(domain),padding:'x'.repeat(1100000)},body=JSON.stringify(data),ref={store_id:source.store,artifact_id:source.artifact,version_id:source.content_version},v=await version(body,ref)
+ const modes:unknown[]=[],path='/studio/dashboards/00000000-0000-4000-8000-000000000001/content/00000000-0000-4000-8000-000000000002'
+ const call=async(_name:string,args:Record<string,unknown>)=>{modes.push(args.mode);assert.deepEqual(args.access,{asset_id:source.asset,asset_version_id:source.version});return {mode:args.mode,version:v,content_path:path}}
+ const selected=await loadPromptSelection(call,source,new AbortController().signal,async(input,init)=>{assert.equal(input,path);assert.equal(init?.redirect,'error');assert.equal(init?.credentials,'same-origin');return new Response(body)})
+ assert.deepEqual(modes,['metadata','download']);assert.equal(selected.variant.prompt_text,variant.prompt_text)
+ assert.ok(promptEntry(selected,'Goal').length<10000)
+})
+
+test('hiding or revoking Project during a large source download cancels bytes and creates nothing',{timeout:5000},async t=>{
+ for(const event of ['hidden','identity']){
+  let start!:()=>void,cancelled=false
+  const ready=new Promise<void>(r=>{start=r})
+  const stream=new ReadableStream<Uint8Array>({pull(){start()},cancel(){cancelled=true}},{highWaterMark:0})
+  t.mock.method(globalThis,'fetch',async()=>new Response(stream))
+  const f=fixture({...clone(domain),padding:'x'.repeat(1100000)}),c=createPromptProject(f.sdk,f.storage,source),pending=c.load()
+  await ready;if(event==='hidden')f.event('hidden');else f.change()
+  await assert.rejects(pending);assert.equal(cancelled,true);assert.deepEqual(f.count(),{createCount:0,useCount:0});assert.equal(f.records.size,0)
+  c.dispose();t.mock.restoreAll()
  }
 })

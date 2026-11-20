@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { ProjectReader } from '../src/platform/project-reader.ts'
+import { controlledContentPath, ProjectReader } from '../src/platform/project-reader.ts'
 import { connectHost, disconnectHost } from '../src/platform/host.ts'
 
 const uuid = (n: number) => `00000000-0000-7000-8000-${String(n).padStart(12, '0')}`
@@ -25,7 +25,10 @@ test('thumbnail bursts share four read slots with documents, deduplicate, and ca
     lifecycle: { subscribe: () => () => {} },
     capabilities: { call: async (_name: string, args: any) => {
       enter()
-      if (args.representation.startsWith('thumbnail-')) thumbnails++
+      if (args.representation.startsWith('thumbnail-')) {
+        assert.equal(args.representation, 'thumbnail-640-v2')
+        thumbnails++
+      }
       else documents++
       await new Promise<void>(resolve => pending.push(resolve)); leave()
       return { mode: 'download', version: { ...args.content_ref, mime: 'image/png', size: 1, sha256: 'a'.repeat(64) }, content_path: `/studio/media/${'a'.repeat(64)}/${'b'.repeat(64)}/${args.representation}` }
@@ -99,4 +102,21 @@ test('a queued operation with its own retry does not receive another retry layer
   await assert.rejects(reads.run(async () => { attempts++; throw new Error('thumbnail failed after its retry') }, 0))
   assert.equal(attempts, 1)
   reads.dispose()
+})
+
+test('controlledContentPath accepts v1/v2 thumbnails and v1 posters while rejecting unknown representations', () => {
+  const previousLocation = Object.getOwnPropertyDescriptor(globalThis, 'location')
+  Object.defineProperty(globalThis, 'location', { configurable: true, value: { origin: 'https://studio.test' } })
+  try {
+    for (const rep of ['original-v1', 'thumbnail-320-v1', 'thumbnail-640-v1', 'thumbnail-320-v2', 'thumbnail-640-v2', 'poster-320-v1', 'poster-640-v1']) {
+      const p = `/studio/media/${'a'.repeat(64)}/${'b'.repeat(64)}/${rep}`
+      assert.equal(controlledContentPath(p), p)
+    }
+    for (const bad of ['thumbnail-1280-v2', 'thumbnail-640-v3', 'poster-640-v2']) {
+      assert.throws(() => controlledContentPath(`/studio/media/${'a'.repeat(64)}/${'b'.repeat(64)}/${bad}`))
+    }
+  } finally {
+    if (previousLocation) Object.defineProperty(globalThis, 'location', previousLocation)
+    else Reflect.deleteProperty(globalThis, 'location')
+  }
 })

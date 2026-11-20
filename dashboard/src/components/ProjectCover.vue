@@ -35,6 +35,7 @@ onBeforeUnmount(() => { generation++; reader.value?.dispose() })
       kind="image"
       :label="project.name"
       thumbnail
+      :edge="640"
       :contain="project.category === 'image'"
       :object-position="position"
     />

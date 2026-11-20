@@ -10,7 +10,7 @@ const route = useRoute()
   <div class="music-cards">
     <article v-for="entry in entries" :key="entry.key" class="music-card">
       <RouterLink class="project-card" :to="{ path: route.path, query: { ...route.query, tab: group, item: entry.key, version: undefined } }">
-        <ProjectMedia v-if="entry.image_file_id" :reader="reader" :file-id="entry.image_file_id" kind="image" :label="entry.title" thumbnail /><div v-else class="music-glyph" aria-hidden="true">♫</div>
+        <ProjectMedia v-if="entry.image_file_id" :reader="reader" :file-id="entry.image_file_id" kind="image" :label="entry.title" thumbnail :edge="640" /><div v-else class="music-glyph" aria-hidden="true">♫</div>
         <div class="card-text"><h2>{{ entry.title }}</h2><p>{{ entry.overview || '未填写' }}</p><span>{{ group === 'songs' ? '查看歌曲' : '查看 MV' }} →</span></div>
       </RouterLink>
       <div v-if="group === 'songs'" class="preview"><ProjectMedia :reader="reader" :file-id="currentMusicOutput(entry)" kind="audio" :label="entry.title + '试听'" /></div>
