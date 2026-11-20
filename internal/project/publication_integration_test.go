@@ -16,6 +16,7 @@ import (
 // Runs only against disposable 5090 databases. Artifact and World are controlled
 // in-memory clients; this is not a real Artifact/World transport acceptance test.
 func TestPublicationLargeDocumentRestartAndAssociationRecovery(t *testing.T) {
+	t.Setenv("PROJECT_CONTENT_CACHE_DIR", t.TempDir())
 	ctx := context.Background()
 	db := testdb.New(t)
 	if err := migrations.ApplyFresh(ctx, db, 1, 1); err != nil {
@@ -113,15 +114,22 @@ func TestPublicationLargeDocumentRestartAndAssociationRecovery(t *testing.T) {
 	}
 	association := PublicationAssociateRequest{PublicationReceiptRequest: f.locator, ExpectedRevisionID: prepared.Result.RevisionID, AssociationCommitID: id(41)}
 	association.PreparedRevisionID = prepared.Result.RevisionID
-	result, err := s.PublicationAssociate(ctx, f.principal, association)
+	wire := newEntryWire(t, s)
+	wire.dropNext.Store(true)
+	if _, err := wire.call(f.principal, "project.publication_associate", association, false, nil); err == nil || wire.dropStatus.Load() != 200 {
+		t.Fatal("association response was not lost after successful persistence")
+	}
+	result, err := s.Status(ctx, f.principal, association.ProjectID, association.AssociationCommitID)
 	if err != nil || result.State != "committed" || result.Result == nil {
 		t.Fatalf("association failed: state=%q error=%s", result.State, publicationErrorLabel(err))
 	}
 	assets.err = ErrDependency
 	calls := assets.calls
 	s = newService()
-	retry, err := s.PublicationAssociate(ctx, f.principal, association)
-	if err != nil || retry.State != "committed" || retry.Result == nil || retry.Result.RevisionID != result.Result.RevisionID || retry.RequestHash != result.RequestHash || assets.calls != calls {
+	wire = newEntryWire(t, s)
+	var retry CommitStatus
+	status, err := wire.call(f.principal, "project.publication_associate", association, false, &retry)
+	if err != nil || status != 200 || retry.State != "committed" || retry.Result == nil || retry.Result.RevisionID != result.Result.RevisionID || retry.RequestHash != result.RequestHash || assets.calls != calls {
 		t.Fatal("completed association could not recover while World was offline")
 	}
 	foreign := association

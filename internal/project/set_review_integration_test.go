@@ -40,6 +40,7 @@ func (a *reviewIntegrationArtifact) Write(ctx context.Context, p Principal, proj
 }
 
 func TestSetReviewDurableRecoveryCASAndGuard(t *testing.T) {
+	t.Setenv("PROJECT_CONTENT_CACHE_DIR", t.TempDir())
 	ctx := context.Background()
 	db := testdb.New(t)
 	if err := migrations.ApplyFresh(ctx, db, 1, 1); err != nil {
