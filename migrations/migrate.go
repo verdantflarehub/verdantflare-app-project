@@ -93,5 +93,11 @@ func ApplyFresh(ctx context.Context, db *pgxpool.Pool, projectFence, worldFence 
 	if _, err = tx.Exec(ctx, "INSERT INTO studio.project_extensions VALUES('set_review',$1)", setReviewDigest()); err != nil {
 		return err
 	}
+	if _, err = tx.Exec(ctx, crewTaskSQL); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, "INSERT INTO studio.project_extensions VALUES('crew_task',$1)", crewTaskDigest()); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
 }

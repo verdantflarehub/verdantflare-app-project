@@ -59,6 +59,9 @@ func run() error {
 	if len(os.Args) == 2 && os.Args[1] == "migrate-lifecycle" {
 		return migrations.UpgradeLifecycle(ctx, db)
 	}
+	if len(os.Args) == 2 && os.Args[1] == "migrate-crew-task" {
+		return migrations.UpgradeCrewTask(ctx, db)
+	}
 	if len(os.Args) == 2 && os.Args[1] == "migrate-set-review" {
 		return migrations.UpgradeSetReview(ctx, db)
 	}
@@ -69,6 +72,9 @@ func run() error {
 		return errors.New("unsupported command")
 	}
 	if err = migrations.CheckRuntime(ctx, db); err != nil {
+		return err
+	}
+	if err = migrations.CheckCrewTask(ctx, db); err != nil {
 		return err
 	}
 	serviceToken := os.Getenv("PROJECT_SERVICE_TOKEN")

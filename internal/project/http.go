@@ -76,6 +76,12 @@ func (s *Service) HTTPHandler(serviceToken string, _ ...string) (http.Handler, e
 		}
 		var result any
 		switch r.URL.Path {
+		case "/internal/v1/project/crew_task":
+			var req CrewRequest
+			if !decode(&req) {
+				return
+			}
+			result, err = s.CrewTask(r.Context(), p, req)
 		case "/internal/v1/project/review/open":
 			var req ReviewOpenRequest
 			if err = decodeReview(data, &req); err == nil {
